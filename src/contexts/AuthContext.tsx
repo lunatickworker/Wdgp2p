@@ -244,12 +244,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string, isAdminPage: boolean = false): Promise<User> => {
     try {
+      // 1단계: Auth 로그인 시도 (일반 회원용)
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (authData.user && !authError) {
+        // Auth 로그인 성공 - users 테이블에서 추가 정보 조회
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
+          .eq('user_id', authData.user.id)
+          .maybeSingle();
+
+        if (userData) {
+          // 승인대기 상태 체크
+          if (userData.status === 'pending') {
+            await supabase.auth.signOut(); // 로그아웃
+            throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
+          }
+
+          const loggedInUser: User = {
+            id: userData.user_id,
+            email: userData.email,
+            username: userData.username,
+            role: userData.role || 'user',
+            level: userData.level,
+            templateId: userData.template_id,
+            centerName: userData.center_name,
+            logoUrl: userData.logo_url
+          };
+
+          // 역할 검증
+          if (isAdminPage && !['center', 'agency', 'store', 'admin', 'master'].includes(loggedInUser.role)) {
+            await supabase.auth.signOut();
+            throw new Error('관리자 권한이 필요합니다');
+          }
+
+          setUser(loggedInUser);
+          localStorage.setItem('user', JSON.stringify(loggedInUser));
+
+          console.log('✅ Auth 로그인 성공:', loggedInUser);
+          return loggedInUser;
+        }
+      }
+
+      // 2단계: Auth 실패 시 DB 비밀번호 검증 (관리자용)
       // Figma 환경에서는 직접 Supabase 클라이언트 사용
       const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
       const isFigmaEnv = hostname.includes('.figma.com') || hostname.includes('figma.site');
       
       if (isFigmaEnv) {
-        console.log('🎨 Figma 환경 감지 - Supabase 클라이언트 직접 사용');
+        console.log('🎨 Figma 환경 감지 - DB 비밀번호 검증 시도');
         
         // 1. 사용자 조회 (password_hash만 조회)
         const { data: userData, error: userError } = await supabase

@@ -3,7 +3,6 @@ import { Activity, Mail, Lock, LogIn, Eye, EyeOff, Sparkles, X, Users } from 'lu
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { supabase } from '../../utils/supabase/client';
-import bcrypt from 'bcryptjs';
 
 export function MobileLogin() {
   const [email, setEmail] = useState('');
@@ -246,7 +245,6 @@ export function MobileLogin() {
         email: signUpData.email,
         password: signUpData.password,
         options: {
-          emailRedirectTo: undefined, // 이메일 확인 비활성화
           data: {
             role: 'user',
             username: signUpData.username,
@@ -300,16 +298,13 @@ export function MobileLogin() {
       // 일반 회원의 referral_code는 소속 가맹점 코드 (입력한 추천인 코드)
       const referralCode = signUpData.referralCode ? signUpData.referralCode.toLowerCase() : null;
       
-      // 비밀번호 해시 생성
-      const passwordHash = await bcrypt.hash(signUpData.password, 10);
-      
       const { error: dbError } = await supabase
         .from('users')
         .insert({
           user_id: authData.user.id, // Auth에서 생성된 UUID 사용
           email: signUpData.email,
           username: signUpData.username,
-          password_hash: passwordHash,  // 해시된 비밀번호 저장
+          // password_hash는 Auth가 관리하므로 저장하지 않음
           referral_code: referralCode,  // 소속 가맹점 코드 (추천인 코드)
           role: 'user',
           level: 'Basic',

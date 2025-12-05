@@ -2,6 +2,7 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 import walletRouter from "./wallet.tsx";
 import transactionRouter from "./transaction.tsx";
 
@@ -230,10 +231,30 @@ app.post("/make-server-b6d5667f/api/auth/login", async (c) => {
       return c.json({ error: '이메일 또는 비밀번호가 올바르지 않습니다' }, 401);
     }
 
-    // 비밀번호 확인 (password_hash 컬럼만 체크)
-    if (!userData.password_hash || userData.password_hash !== password) {
+    // 비밀번호 확인 (bcrypt 해시 비교 또는 평문 비교)
+    if (!userData.password_hash) {
       return c.json({ error: '이메일 또는 비밀번호가 올바르지 않습니다' }, 401);
     }
+
+    // bcrypt 해시인지 평문인지 확인
+    let isPasswordValid = false;
+    
+    if (userData.password_hash.startsWith('$2a$') || userData.password_hash.startsWith('$2b$')) {
+      // bcrypt 해시인 경우
+      console.log('🔐 Comparing bcrypt hash...');
+      isPasswordValid = await bcrypt.compare(password, userData.password_hash);
+    } else {
+      // 평문 비밀번호인 경우 (기존 사용자 하위 호환성)
+      console.log('🔐 Comparing plain text password...');
+      isPasswordValid = userData.password_hash === password;
+    }
+    
+    if (!isPasswordValid) {
+      console.log('❌ Password mismatch');
+      return c.json({ error: '이메일 또는 비밀번호가 올바르지 않습니다' }, 401);
+    }
+    
+    console.log('✅ Password verified successfully');
 
     // 계정 상태 확인
     if (userData.status !== 'active') {
@@ -273,11 +294,14 @@ app.post("/make-server-b6d5667f/api/auth/change-password", async (c) => {
       return c.json({ error: '비밀번호는 8자 이상이어야 합니다' }, 400);
     }
 
+    // 비밀번호 해시화 (salt rounds 10)
+    const hashedPassword = await bcrypt.hash(new_password, 10);
+
     // 비밀번호 업데이트 (RLS 우회)
     const { error } = await supabase
       .from('users')
       .update({ 
-        password_hash: new_password,
+        password_hash: hashedPassword,
         updated_at: new Date().toISOString()
       })
       .eq('user_id', user_id);

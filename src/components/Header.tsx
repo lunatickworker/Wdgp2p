@@ -143,12 +143,12 @@ export function Header({ onNavigate }: HeaderProps) {
         // 계층 구조에 따라 하위 사용자 ID 조회
         const hierarchyUserIds = await getHierarchyUserIds(user.id, user.role);
 
-        // 회원가입 알림 (신규 가입자 - 24시간 이내, 하위만)
+        // 회원가입 알림 (승인대기 상태만, 하위만)
         const { count: signupCount } = await supabase
           .from('users')
           .select('*', { count: 'exact', head: true })
           .in('user_id', hierarchyUserIds)
-          .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+          .eq('status', 'pending');
         
         setSignupNotifications(signupCount || 0);
 
@@ -195,13 +195,13 @@ export function Header({ onNavigate }: HeaderProps) {
       )
       .subscribe();
 
-    // 실시간 구독: 신규 회원가입
+    // 실시간 구독: 신규 회원가입 및 상태 변경
     const usersSub = supabase
       .channel('users_notifications')
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', // INSERT와 UPDATE 모두 감지
           schema: 'public',
           table: 'users'
         },

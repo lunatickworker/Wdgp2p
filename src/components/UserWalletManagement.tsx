@@ -44,7 +44,7 @@ export function UserWalletManagement() {
   const [users, setUsers] = useState<UserData[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
   const [userWallets, setUserWallets] = useState<WalletData[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [activeTab, setActiveTab] = useState<"info" | "wallets">("info");
@@ -155,8 +155,6 @@ export function UserWalletManagement() {
   };
 
   const fetchData = async () => {
-    setIsLoading(true);
-    
     try {
       // Backend API로 사용자 데이터 가져오기 (RLS 우회)
       const backendUrl = 'https://mzoeeqmtvlnyonicycvg.supabase.co/functions/v1/make-server-b6d5667f';
@@ -178,7 +176,6 @@ export function UserWalletManagement() {
         const text = await response.text();
         console.error('Response body:', text);
         toast.error(`서버 오류: ${response.status}`);
-        setIsLoading(false);
         return;
       }
 
@@ -189,36 +186,33 @@ export function UserWalletManagement() {
         const text = await response.text();
         console.error('Response body:', text);
         toast.error('서버 응답 형식이 올바르지 않습니다');
-        setIsLoading(false);
         return;
       }
 
       const result = await response.json();
 
       if (result.success && result.users) {
-        // 사용자 목록을 먼저 표시 (즉시 로딩 완료)
+        // 사용자 목록을 즉시 표시
         setUsers(result.users);
-        setIsLoading(false);
         
         // 통계는 백그라운드에서 계산 (비동기)
         fetchStats(result.users);
       } else {
         console.error('❌ Backend API error:', result);
         toast.error(result.error || '사용자 데이터를 가져오는데 실패했습니다');
-        setIsLoading(false);
       }
     } catch (error) {
       console.error('❌ Error fetching users:', error);
       toast.error('사용자 데이터를 가져오는데 실패했습니다');
-      setIsLoading(false);
     }
   };
 
   const fetchStats = async (usersData: UserData[]) => {
     try {
-      // 통계 계산
-      const totalUsers = usersData.length;
-      const verifiedUsers = usersData.filter((u: any) => u.account_verification_status === 'verified').length;
+      // 통계 계산 - role='user'인 일반 사용자만 카운트 (관리자 제외)
+      const regularUsers = usersData.filter((u: any) => u.role === 'user');
+      const totalUsers = regularUsers.length;
+      const verifiedUsers = regularUsers.filter((u: any) => u.account_verification_status === 'verified').length;
       
       // 사용자들의 user_id 배열
       const userIds = usersData.map((u: any) => u.user_id);
@@ -386,46 +380,25 @@ export function UserWalletManagement() {
         return;
       }
 
-      // 회원 생성
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: createUserForm.email,
-        password: createUserForm.password,
-        options: {
-          emailRedirectTo: undefined, // 이메일 확인 비활성화
-          data: {
-            username: createUserForm.username,
-            role: 'user',
-            parent_user_id: createUserForm.storeId,
-            phone_number: createUserForm.phoneNumber || null
-          }
-        }
-      });
-
-      if (authError) {
-        console.error('❌ Auth Error:', authError);
-        throw authError;
-      }
-
-      if (!authData.user) {
-        throw new Error('사용자 생성에 실패했습니다');
-      }
-
-      // 비밀번호 해시 생성
+      // 회원 생성 (Auth 없이 DB에만 저장)
+      const userId = self.crypto.randomUUID();
       const passwordHash = await bcrypt.hash(createUserForm.password, 10);
 
       // users 테이블에 사용자 정보 저장
       const { error: insertError } = await supabase
         .from('users')
         .insert({
-          user_id: authData.user.id,
+          user_id: userId,
           email: createUserForm.email,
           username: createUserForm.username,
-          password_hash: passwordHash, // 해시된 비밀번호 저장
+          password_hash: passwordHash,
           phone: createUserForm.phoneNumber || null,
+          referral_code: createUserForm.email.split('@')[0].toLowerCase(), // 이메일 @ 앞부분을 추천인 코드로
           role: 'user',
           level: 'Basic',
           parent_user_id: createUserForm.storeId,
           tenant_id: createUserForm.storeId, // 소속 가맹점을 tenant_id로 사용
+          status: 'active',
           is_active: true,
           kyc_status: 'pending',
         });
@@ -607,11 +580,14 @@ export function UserWalletManagement() {
     if (!selectedUser || !generatedPassword) return;
 
     try {
-      // users 테이블에 임시 비밀번호 저장 (해시화는 로그인 시 처리)
+      // 비밀번호 해시 생성
+      const passwordHash = await bcrypt.hash(generatedPassword, 10);
+      
+      // users 테이블에 임시 비밀번호 저장 (bcrypt 해시로 저장)
       const { error } = await supabase
         .from('users')
         .update({ 
-          password_hash: generatedPassword // 실제로는 bcrypt 해시 필요
+          password_hash: passwordHash
         })
         .eq('user_id', selectedUser.user_id);
 
@@ -895,11 +871,7 @@ export function UserWalletManagement() {
 
               {/* 사용자 리스트 - 스크롤 없이 페이지네이션 */}
               <div className="space-y-1.5 min-h-[480px]">
-                {isLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-                  </div>
-                ) : currentUsers.length === 0 ? (
+                {currentUsers.length === 0 ? (
                   <div className="text-center py-12 text-slate-400">
                     검색 결과가 없습니다
                   </div>

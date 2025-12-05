@@ -290,37 +290,37 @@ export function AccountVerificationManagement() {
       </div>
 
       {/* 통계 카드 */}
-      <div className="grid grid-cols-4 gap-3">
-        <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-slate-400 text-xs">전체</span>
-            <Wallet className="w-4 h-4 text-slate-400" />
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="relative group">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-slate-500 to-slate-400 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+          <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
+            <p className="text-slate-400 text-sm mb-1">전체</p>
+            <p className="text-white text-2xl">{stats.total.toLocaleString()}</p>
           </div>
-          <p className="text-white text-xl">{stats.total}</p>
         </div>
 
-        <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-amber-400 text-xs">대기중</span>
-            <Clock className="w-4 h-4 text-amber-400" />
+        <div className="relative group">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-amber-500 to-orange-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+          <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
+            <p className="text-slate-400 text-sm mb-1">대기중</p>
+            <p className="text-amber-400 text-2xl">{stats.pending.toLocaleString()}</p>
           </div>
-          <p className="text-amber-400 text-xl">{stats.pending}</p>
         </div>
 
-        <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-green-400 text-xs">승인됨</span>
-            <CheckCircle className="w-4 h-4 text-green-400" />
+        <div className="relative group">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+          <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
+            <p className="text-slate-400 text-sm mb-1">승인됨</p>
+            <p className="text-green-400 text-2xl">{stats.verified.toLocaleString()}</p>
           </div>
-          <p className="text-green-400 text-xl">{stats.verified}</p>
         </div>
 
-        <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-red-400 text-xs">거부됨</span>
-            <XCircle className="w-4 h-4 text-red-400" />
+        <div className="relative group">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-red-500 to-rose-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+          <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
+            <p className="text-slate-400 text-sm mb-1">거부됨</p>
+            <p className="text-red-400 text-2xl">{stats.rejected.toLocaleString()}</p>
           </div>
-          <p className="text-red-400 text-xl">{stats.rejected}</p>
         </div>
       </div>
 

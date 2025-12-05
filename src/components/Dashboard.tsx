@@ -169,16 +169,23 @@ export function Dashboard() {
       return;
     }
 
-    // 필터링된 사용자 수
-    const totalUsers = userIds.length;
+    // 필터링된 사용자 중 role='user'인 일반 사용자만 카운트 (관리자 제외)
+    const { data: regularUsers } = await supabase
+      .from('users')
+      .select('user_id, created_at')
+      .in('user_id', userIds)
+      .eq('role', 'user');
+    
+    const totalUsers = regularUsers?.length || 0;
 
-    // 이전 달 사용자 수
+    // 이전 달 일반 사용자 수
     const lastMonth = new Date();
     lastMonth.setMonth(lastMonth.getMonth() - 1);
     const { count: lastMonthUsers } = await supabase
       .from('users')
       .select('*', { count: 'exact', head: true })
       .in('user_id', userIds)
+      .eq('role', 'user')
       .lte('created_at', lastMonth.toISOString());
 
     const userChange = totalUsers && lastMonthUsers 

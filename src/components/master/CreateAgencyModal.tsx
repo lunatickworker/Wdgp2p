@@ -4,6 +4,7 @@ import { supabase } from "../../utils/supabase/client";
 import { checkEmailAvailability } from "../../utils/api/check-email";
 import { toast } from "sonner@2.0.3";
 import bcrypt from 'bcryptjs';
+import { useAuth } from "../../contexts/AuthContext";
 
 interface CreateAgencyModalProps {
   onClose: () => void;
@@ -24,6 +25,7 @@ export function CreateAgencyModal({ onClose, onSuccess }: CreateAgencyModalProps
   });
   const [emailAvailable, setEmailAvailable] = useState(true);
   const [emailChecked, setEmailChecked] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     if (formData.email && emailChecked) {
@@ -63,71 +65,31 @@ export function CreateAgencyModal({ onClose, onSuccess }: CreateAgencyModalProps
     try {
       setLoading(true);
 
-      // 1. Auth 사용자 생성 (Supabase Auth)
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          emailRedirectTo: undefined, // 이메일 확인 비활성화
-          data: {
-            role: 'agency',
-            center_name: formData.agencyName,
-            email_confirm: true, // 이메일 자동 확인
-          }
-        }
-      });
-
-      if (authError) {
-        console.error('Auth error:', authError);
-        throw authError;
-      }
-
-      if (!authData.user) {
-        throw new Error('사용자 생성에 실패했습니다');
-      }
-
-      // 2. Users 테이블에 에이전시 정보 저장
-      const referralCode = formData.email.split('@')[0].toLowerCase();
-      
-      // 비밀번호 해시 생성
+      // 1. DB에 사용자 생성 (Auth 없이)
+      const agencyId = self.crypto.randomUUID();
       const passwordHash = await bcrypt.hash(formData.password, 10);
-      
-      const { error: insertError } = await supabase
+      const referralCode = formData.email.split('@')[0].toLowerCase();
+
+      const { error: dbError } = await supabase
         .from('users')
         .insert({
-          user_id: authData.user.id,
-          username: formData.agencyName,
+          user_id: agencyId,
           email: formData.email,
-          password_hash: passwordHash, // 해시된 비밀번호 저장
-          referral_code: referralCode, // 이메일 @ 앞부분을 추천인 코드로
-          phone: formData.phone,
-          role: 'agency',
+          username: formData.agencyName,
           center_name: formData.agencyName,
-          is_active: true,
-          kyc_status: 'pending',
+          password_hash: passwordHash,
+          referral_code: referralCode,
+          role: 'agency',
+          parent_user_id: user?.id,
+          level: 'Standard',
           status: 'active',
-          balance: {},
-          // 추가 정보 저장 (필요시 별도 테이블로 분리)
-          metadata: {
-            contactPerson: formData.contactPerson,
-            address: formData.address,
-            businessNumber: formData.businessNumber,
-          }
+          is_active: true,
+          created_at: new Date().toISOString(),
         });
 
-      if (insertError) {
-        console.error('Insert error:', insertError);
-        
-        // Users 테이블 삽입 실패 시 Auth 사용자 정리 시도
-        try {
-          // 관리자가 사용자를 삭제하려면 Admin API를 사용해야 하지만
-          // 여기서는 일단 에러만 로깅
-          console.error('Auth 사용자가 생성되었지만 Users 테이블 삽입 실패:', authData.user.id);
-        } catch (cleanupError) {
-          console.error('Cleanup error:', cleanupError);
-        }
-        
-        throw insertError;
+      if (dbError) {
+        console.error('DB error:', dbError);
+        throw dbError;
       }
 
       toast.success('에이전시가 성공적으로 생성되었습니다');
