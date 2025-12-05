@@ -23,7 +23,7 @@ export function Dashboard() {
     totalUsers: 0,
     todayDeposits: 0,
     todayWithdrawals: 0,
-    pendingPurchases: 0,  // 대기 승인 → 코인구매요청으로 변경
+    netProfit: 0,  // 순이익 (입금-출금)
     depositChange: 0,
     withdrawalChange: 0,
     userChange: 0
@@ -194,7 +194,7 @@ export function Dashboard() {
         ...prev,
         todayDeposits: 0,
         todayWithdrawals: 0,
-        pendingPurchases: 0,  // 대기 승인 → 코인구매요청으로 변경
+        netProfit: 0,  // 순이익 (입금-출금)
         depositChange: 0,
         withdrawalChange: 0
       }));
@@ -256,18 +256,14 @@ export function Dashboard() {
       ? ((todayWithdrawalsTotal - yesterdayWithdrawalsTotal) / yesterdayWithdrawalsTotal * 100).toFixed(1)
       : 0;
 
-    // 코인구매요청 수 (transfer_requests 테이블에서 pending 상태만)
-    const { count: pendingPurchases } = await supabase
-      .from('transfer_requests')
-      .select('*', { count: 'exact', head: true })
-      .in('user_id', userIds)
-      .eq('status', 'pending');
+    // 순이익 계산 (입금 - 출금)
+    const netProfit = todayDepositsTotal - todayWithdrawalsTotal;
 
     setStats(prev => ({
       ...prev,
       todayDeposits: todayDepositsTotal,
       todayWithdrawals: todayWithdrawalsTotal,
-      pendingPurchases: pendingPurchases || 0,
+      netProfit: netProfit,
       depositChange: Number(depositChange),
       withdrawalChange: Number(withdrawalChange)
     }));
@@ -440,9 +436,9 @@ export function Dashboard() {
       color: "purple"
     },
     {
-      title: "코인구매요청",
-      value: stats.pendingPurchases.toString(),
-      change: "처리 필요",
+      title: "순이익",
+      value: formatCurrency(stats.netProfit),
+      change: "계산 필요",
       trend: "warning",
       icon: AlertTriangle,
       color: "amber"

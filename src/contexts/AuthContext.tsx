@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '../utils/supabase/client';
 import { SUPABASE_CONFIG } from '../utils/config';
+import bcrypt from 'bcryptjs';
 
 interface User {
   id: string;
@@ -81,40 +82,108 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('🔍 Checking if user exists in database:', authUser.email);
 
-      // users 테이블에서 사용자 조회
-      const { data: userData, error: userError } = await supabase
+      // 1. user_id로 먼저 확인 (Auth ID와 DB ID가 동일해야 함)
+      let { data: existingUser, error: fetchError } = await supabase
         .from('users')
         .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
-        .eq('email', authUser.email)
+        .eq('user_id', authUser.id)
         .maybeSingle();
 
-      if (userError) {
-        console.error('Error fetching user:', userError);
+      // 2. user_id로 없으면 email로 확인
+      if (!existingUser && !fetchError) {
+        const result = await supabase
+          .from('users')
+          .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
+          .eq('email', authUser.email)
+          .maybeSingle();
+        
+        existingUser = result.data;
+        fetchError = result.error;
+      }
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('Error fetching user:', fetchError);
         throw new Error('사용자 정보 조회 실패');
       }
 
-      if (!userData) {
-        // 신규 사용자 - users 테이블에 생성 (일반 사용자로)
-        console.log('📝 Creating new user in database');
-        
-        const newUser = {
-          user_id: authUser.id,
-          email: authUser.email,
-          username: authUser.user_metadata?.full_name || authUser.email.split('@')[0],
-          role: 'user',
-          status: 'active',
-          is_active: true,
-          referral_code: authUser.email.split('@')[0],
-          created_at: new Date().toISOString(),
+      // 3. 기존 사용자가 있으면 바로 로그인 처리
+      if (existingUser) {
+        console.log('✅ Existing user found:', existingUser.email);
+
+        // 상태 확인
+        if (existingUser.status !== 'active') {
+          throw new Error('비활성화된 계정입니다. 관리자에게 문의하세요.');
+        }
+
+        const loggedInUser: User = {
+          id: existingUser.user_id,
+          email: existingUser.email,
+          username: existingUser.username,
+          role: existingUser.role || 'user',
+          level: existingUser.level,
+          templateId: existingUser.template_id,
+          centerName: existingUser.center_name,
+          logoUrl: existingUser.logo_url,
         };
 
+        setUser(loggedInUser);
+        localStorage.setItem('user', JSON.stringify(loggedInUser));
+        console.log('✅ User logged in:', loggedInUser);
+        return;
+      }
+
+      // 4. 신규 사용자 - users 테이블에 생성
+      console.log('📝 Creating new user in database');
+      
+      const newUser = {
+        user_id: authUser.id,
+        email: authUser.email,
+        username: authUser.user_metadata?.full_name || authUser.email.split('@')[0],
+        role: 'user',
+        status: 'active',
+        is_active: true,
+        referral_code: authUser.email.split('@')[0],
+        created_at: new Date().toISOString(),
+      };
+
+      try {
         const { error: insertError } = await supabase
           .from('users')
           .insert(newUser);
 
         if (insertError) {
-          console.error('Error creating user:', insertError);
-          throw new Error('사용자 생성 실패');
+          // 중복 키 에러인 경우 기존 사용자 조회
+          if (insertError.code === '23505') {
+            console.log('🔄 Duplicate key detected, fetching existing user...');
+            
+            const { data: retryUser, error: retryError } = await supabase
+              .from('users')
+              .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
+              .eq('user_id', authUser.id)
+              .single();
+
+            if (retryError || !retryUser) {
+              throw new Error('사용자 조회 실패');
+            }
+
+            const loggedInUser: User = {
+              id: retryUser.user_id,
+              email: retryUser.email,
+              username: retryUser.username,
+              role: retryUser.role || 'user',
+              level: retryUser.level,
+              templateId: retryUser.template_id,
+              centerName: retryUser.center_name,
+              logoUrl: retryUser.logo_url,
+            };
+
+            setUser(loggedInUser);
+            localStorage.setItem('user', JSON.stringify(loggedInUser));
+            console.log('✅ Existing user loaded after duplicate key:', loggedInUser);
+            return;
+          }
+          
+          throw insertError;
         }
 
         // 새로 생성된 사용자 정보로 로그인
@@ -127,28 +196,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(loggedInUser);
         localStorage.setItem('user', JSON.stringify(loggedInUser));
+        console.log('✅ New user created and logged in:', loggedInUser);
         return;
+
+      } catch (insertError: any) {
+        console.error('Insert error:', insertError);
+        
+        // 중복 키 에러 최종 처리
+        if (insertError.code === '23505') {
+          console.log('🔄 Final retry: fetching existing user...');
+          
+          const { data: finalUser, error: finalError } = await supabase
+            .from('users')
+            .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
+            .eq('user_id', authUser.id)
+            .single();
+
+          if (finalError || !finalUser) {
+            throw new Error('사용자 조회 실패');
+          }
+
+          const loggedInUser: User = {
+            id: finalUser.user_id,
+            email: finalUser.email,
+            username: finalUser.username,
+            role: finalUser.role || 'user',
+            level: finalUser.level,
+            templateId: finalUser.template_id,
+            centerName: finalUser.center_name,
+            logoUrl: finalUser.logo_url,
+          };
+
+          setUser(loggedInUser);
+          localStorage.setItem('user', JSON.stringify(loggedInUser));
+          console.log('✅ Final user loaded:', loggedInUser);
+          return;
+        }
+        
+        throw new Error('사용자 생성 실패');
       }
 
-      // 기존 사용자 - 상태 확인
-      if (userData.status !== 'active') {
-        throw new Error('비활성화된 계정입니다. 관리자에게 문의하세요.');
-      }
-
-      const loggedInUser: User = {
-        id: userData.user_id,
-        email: userData.email,
-        username: userData.username,
-        role: userData.role || 'user',
-        level: userData.level,
-        templateId: userData.template_id,
-        centerName: userData.center_name,
-        logoUrl: userData.logo_url,
-      };
-
-      setUser(loggedInUser);
-      localStorage.setItem('user', JSON.stringify(loggedInUser));
-      console.log('✅ User logged in:', loggedInUser);
     } catch (error) {
       console.error('OAuth login error:', error);
       throw error;
@@ -184,17 +271,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         
         // 2. 비밀번호 검증
-        // password_hash 컬럼의 값과 비교 (테스트 환경에서는 평문으로 저장됨)
         if (!userData.password_hash) {
           console.error('No password_hash found in database');
           throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
         }
         
-        // 평문 비밀번호와 직접 비교 (테스트 환경)
-        if (userData.password_hash !== password) {
+        // bcrypt 해시 비교 또는 평문 비교 (하위 호환성)
+        let isPasswordValid = false;
+        
+        if (userData.password_hash.startsWith('$2a$') || userData.password_hash.startsWith('$2b$')) {
+          // bcrypt 해시인 경우
+          console.log('🔐 Comparing bcrypt hash...');
+          isPasswordValid = await bcrypt.compare(password, userData.password_hash);
+        } else {
+          // 평문 비밀번호인 경우 (기존 사용자)
+          console.log('🔐 Comparing plain text password...');
+          isPasswordValid = userData.password_hash === password;
+        }
+        
+        if (!isPasswordValid) {
           console.error('Password mismatch');
           throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
         }
+        
+        console.log('✅ Password verified successfully');
         
         const loggedInUser: User = {
           id: userData.user_id,
