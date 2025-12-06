@@ -58,6 +58,13 @@ function AppContent() {
 
         console.log('[App] Tenant 정보:', tenant);
         console.log('[App] Domain Type:', type);
+        
+        // 🔥 admin 서브도메인이면 자동으로 /#admin으로 리디렉션
+        // 단, 이미 hash가 있는 경우는 건드리지 않음
+        if (type === 'admin' && !window.location.hash) {
+          console.log('[App] Admin 도메인 감지 → /#admin/login으로 리디렉션');
+          window.location.hash = '#admin/login';
+        }
       } catch (error) {
         console.error('[App] Tenant 정보 로드 실패:', error);
       } finally {
