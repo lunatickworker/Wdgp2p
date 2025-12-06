@@ -381,50 +381,53 @@ export function AccountVerification({ onNavigate }: AccountVerificationProps) {
                 value={bankName}
                 onChange={(e) => setBankName(e.target.value)}
                 className="w-full bg-slate-800/50 border border-cyan-500/30 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                style={{
+                  colorScheme: 'dark'
+                }}
               >
-                <option value="">은행을 선택하세요</option>
-                <option value="한국은행">한국은행</option>
-                <option value="산업은행">산업은행</option>
-                <option value="IBK기업은행">IBK기업은행</option>
-                <option value="KB국민은행">KB국민은행</option>
-                <option value="수협은행">수협은행</option>
-                <option value="수출입은행">수출입은행</option>
-                <option value="NH농협은행">NH농협은행</option>
-                <option value="지역농축협">지역농축협</option>
-                <option value="우리은행">우리은행</option>
-                <option value="한국씨티은행">한국씨티은행</option>
-                <option value="대구은행">대구은행</option>
-                <option value="부산은행">부산은행</option>
-                <option value="광주은행">광주은행</option>
-                <option value="제주은행">제주은행</option>
-                <option value="전북은행">전북은행</option>
-                <option value="경남은행">경남은행</option>
-                <option value="우리카드">우리카드</option>
-                <option value="하나카드">하나카드</option>
-                <option value="새마을금고">새마을금고</option>
-                <option value="신협">신협</option>
-                <option value="저축은행">저축은행</option>
-                <option value="모건스탠리은행">모건스탠리은행</option>
-                <option value="HSBC은행">HSBC은행</option>
-                <option value="도이치은행">도이치은행</option>
-                <option value="제이피모간체이스은행">제이피모간체이스은행</option>
-                <option value="미즈호은행">미즈호은행</option>
-                <option value="엠유에프지은행">엠유에프지은행</option>
-                <option value="BOA은행">BOA은행</option>
-                <option value="비엔피파리바은행">비엔피파리바은행</option>
-                <option value="중국공상은행">중국공상은행</option>
-                <option value="산림조합">산림조합</option>
-                <option value="대화은행">대화은행</option>
-                <option value="교보증권">교보증권</option>
-                <option value="중국건설은행">중국건설은행</option>
-                <option value="우체국">우체국</option>
-                <option value="신한금융투자">신한금융투자</option>
-                <option value="KB증권">KB증권</option>
-                <option value="하나은행">하나은행</option>
-                <option value="신한은행">신한은행</option>
-                <option value="K뱅크">K뱅크</option>
-                <option value="카카오뱅크">카카오뱅크</option>
-                <option value="유안타증권">유안타증권</option>
+                <option value="" className="bg-slate-800 text-slate-400">은행을 선택하세요</option>
+                <option value="한국은행" className="bg-slate-800 text-white">한국은행</option>
+                <option value="산업은행" className="bg-slate-800 text-white">산업은행</option>
+                <option value="IBK기업은행" className="bg-slate-800 text-white">IBK기업은행</option>
+                <option value="KB국민은행" className="bg-slate-800 text-white">KB국민은행</option>
+                <option value="수협은행" className="bg-slate-800 text-white">수협은행</option>
+                <option value="수출입은행" className="bg-slate-800 text-white">수출입은행</option>
+                <option value="NH농협은행" className="bg-slate-800 text-white">NH농협은행</option>
+                <option value="지역농축협" className="bg-slate-800 text-white">지역농축협</option>
+                <option value="우리은행" className="bg-slate-800 text-white">우리은행</option>
+                <option value="한국씨티은행" className="bg-slate-800 text-white">한국씨티은행</option>
+                <option value="대구은행" className="bg-slate-800 text-white">대구은행</option>
+                <option value="부산은행" className="bg-slate-800 text-white">부산은행</option>
+                <option value="광주은행" className="bg-slate-800 text-white">광주은행</option>
+                <option value="제주은행" className="bg-slate-800 text-white">제주은행</option>
+                <option value="전북은행" className="bg-slate-800 text-white">전북은행</option>
+                <option value="경남은행" className="bg-slate-800 text-white">경남은행</option>
+                <option value="우리카드" className="bg-slate-800 text-white">우리카드</option>
+                <option value="하나카드" className="bg-slate-800 text-white">하나카드</option>
+                <option value="새마을금고" className="bg-slate-800 text-white">새마을금고</option>
+                <option value="신협" className="bg-slate-800 text-white">신협</option>
+                <option value="저축은행" className="bg-slate-800 text-white">저축은행</option>
+                <option value="모건스탠리은행" className="bg-slate-800 text-white">모건스탠리은행</option>
+                <option value="HSBC은행" className="bg-slate-800 text-white">HSBC은행</option>
+                <option value="도이치은행" className="bg-slate-800 text-white">도이치은행</option>
+                <option value="제이피모간체이스은행" className="bg-slate-800 text-white">제이피모간체이스은행</option>
+                <option value="미즈호은행" className="bg-slate-800 text-white">미즈호은행</option>
+                <option value="엠유에프지은행" className="bg-slate-800 text-white">엠유에프지은행</option>
+                <option value="BOA은행" className="bg-slate-800 text-white">BOA은행</option>
+                <option value="비엔피파리바은행" className="bg-slate-800 text-white">비엔피파리바은행</option>
+                <option value="중국공상은행" className="bg-slate-800 text-white">중국공상은행</option>
+                <option value="산림조합" className="bg-slate-800 text-white">산림조합</option>
+                <option value="대화은행" className="bg-slate-800 text-white">대화은행</option>
+                <option value="교보증권" className="bg-slate-800 text-white">교보증권</option>
+                <option value="중국건설은행" className="bg-slate-800 text-white">중국건설은행</option>
+                <option value="우체국" className="bg-slate-800 text-white">우체국</option>
+                <option value="신한금융투자" className="bg-slate-800 text-white">신한금융투자</option>
+                <option value="KB증권" className="bg-slate-800 text-white">KB증권</option>
+                <option value="하나은행" className="bg-slate-800 text-white">하나은행</option>
+                <option value="신한은행" className="bg-slate-800 text-white">신한은행</option>
+                <option value="K뱅크" className="bg-slate-800 text-white">K뱅크</option>
+                <option value="카카오뱅크" className="bg-slate-800 text-white">카카오뱅크</option>
+                <option value="유안타증권" className="bg-slate-800 text-white">유안타증권</option>
               </select>
             </div>
 
