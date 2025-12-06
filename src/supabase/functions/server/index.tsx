@@ -800,4 +800,183 @@ app.post("/make-server-b6d5667f/api/account-verification/submit", async (c) => {
   }
 });
 
+// =====================================================
+// Vercel 도메인 관리 API
+// =====================================================
+
+// POST /api/vercel/add-domain - Vercel에 도메인 추가
+app.post("/make-server-b6d5667f/api/vercel/add-domain", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { centerId, domain } = body;
+
+    console.log('🌐 Vercel 도메인 추가 요청:', { centerId, domain });
+
+    if (!centerId || !domain) {
+      return c.json({ error: '센터 ID와 도메인이 필요합니다', code: 'MISSING_FIELDS' }, 400);
+    }
+
+    // 1. 센터 존재 확인
+    const { data: center, error: centerError } = await supabase
+      .from('users')
+      .select('user_id, center_name')
+      .eq('user_id', centerId)
+      .eq('role', 'center')
+      .maybeSingle();
+
+    if (centerError || !center) {
+      return c.json({ error: '센터를 찾을 수 없습니다', code: 'CENTER_NOT_FOUND' }, 404);
+    }
+
+    // 2. Vercel API 설정 (모든 가능한 환경변수 이름 시도)
+    const vercelToken = Deno.env.get('VERCEL_TOKEN') || 
+                        Deno.env.get('VITE_VERCEL_TOKEN') ||
+                        Deno.env.get('VERCEL_API_TOKEN');
+    const projectId = Deno.env.get('VERCEL_PROJECT_ID') || 
+                      Deno.env.get('VITE_VERCEL_PROJECT_ID');
+
+    // 디버깅: 사용 가능한 모든 환경변수 확인
+    console.log('🔍 환경변수 확인:', {
+      VERCEL_TOKEN: vercelToken ? '✅ 설정됨' : '❌ 없음',
+      VERCEL_PROJECT_ID: projectId ? '✅ 설정됨' : '❌ 없음',
+      allEnvKeys: Object.keys(Deno.env.toObject()).filter(k => k.includes('VERCEL'))
+    });
+
+    if (!vercelToken || !projectId) {
+      console.error('❌ Vercel API 설정 누락');
+      console.error('사용 가능한 VERCEL 관련 환경변수:', 
+        Object.keys(Deno.env.toObject()).filter(k => k.includes('VERCEL')));
+      return c.json({ 
+        error: 'Vercel API 토큰 또는 프로젝트 ID가 설정되지 않았습니다', 
+        code: 'VERCEL_CONFIG_MISSING',
+        debug: {
+          hasToken: !!vercelToken,
+          hasProjectId: !!projectId,
+          availableEnvs: Object.keys(Deno.env.toObject()).filter(k => k.includes('VERCEL'))
+        }
+      }, 500);
+    }
+
+    const apiUrl = `https://api.vercel.com/v9/projects/${projectId}/domains`;
+
+    // 3. 주도메인 추가
+    console.log('📍 주도메인 추가 중:', domain);
+    const mainResponse = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${vercelToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: domain
+      })
+    });
+
+    const mainResult = await mainResponse.json();
+
+    if (!mainResponse.ok && mainResponse.status !== 409) { // 409 = 이미 존재
+      console.error('❌ 주도메인 추가 실패:', mainResult);
+      return c.json({ 
+        error: mainResult.error?.message || '도메인 추가 실패', 
+        code: 'VERCEL_API_ERROR' 
+      }, mainResponse.status);
+    }
+
+    console.log('✅ 주도메인 추가 성공');
+
+    // 4. admin 서브도메인 추가
+    const adminDomain = `admin.${domain}`;
+    console.log('📍 Admin 서브도메인 추가 중:', adminDomain);
+    
+    const adminResponse = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${vercelToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: adminDomain
+      })
+    });
+
+    const adminResult = await adminResponse.json();
+
+    if (!adminResponse.ok && adminResponse.status !== 409) {
+      console.error('❌ Admin 서브도메인 추가 실패:', adminResult);
+      return c.json({ 
+        error: adminResult.error?.message || 'Admin 도메인 추가 실패', 
+        code: 'VERCEL_API_ERROR' 
+      }, adminResponse.status);
+    }
+
+    console.log('✅ Admin 서브도메인 추가 성공');
+
+    return c.json({
+      success: true,
+      message: '도메인이 Vercel에 추가되었습니다',
+      domains: [domain, adminDomain]
+    });
+
+  } catch (error) {
+    console.error('Vercel domain add error:', error);
+    return c.json({ error: '도메인 추가 중 오류가 발생했습니다', code: 'SERVER_ERROR' }, 500);
+  }
+});
+
+// DELETE /api/vercel/remove-domain - Vercel에서 도메인 제거
+app.delete("/make-server-b6d5667f/api/vercel/remove-domain", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { domain } = body;
+
+    console.log('🗑️ Vercel 도메인 제거 요청:', domain);
+
+    if (!domain) {
+      return c.json({ error: '도메인이 필요합니다', code: 'MISSING_FIELDS' }, 400);
+    }
+
+    // Vercel API 설정
+    const vercelToken = Deno.env.get('VERCEL_TOKEN');
+    const projectId = Deno.env.get('VERCEL_PROJECT_ID');
+
+    if (!vercelToken || !projectId) {
+      console.error('❌ Vercel API 설정 누락');
+      return c.json({ 
+        error: 'Vercel API 토큰 또는 프로젝트 ID가 설정되지 않았습니다', 
+        code: 'VERCEL_CONFIG_MISSING' 
+      }, 500);
+    }
+
+    // 주도메인 삭제
+    const mainApiUrl = `https://api.vercel.com/v9/projects/${projectId}/domains/${domain}`;
+    await fetch(mainApiUrl, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${vercelToken}`
+      }
+    });
+
+    // admin 서브도메인 삭제
+    const adminDomain = `admin.${domain}`;
+    const adminApiUrl = `https://api.vercel.com/v9/projects/${projectId}/domains/${adminDomain}`;
+    await fetch(adminApiUrl, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${vercelToken}`
+      }
+    });
+
+    console.log('✅ Vercel 도메인 제거 성공');
+
+    return c.json({
+      success: true,
+      message: '도메인이 Vercel에서 제거되었습니다'
+    });
+
+  } catch (error) {
+    console.error('Vercel domain remove error:', error);
+    return c.json({ error: '도메인 제거 중 오류가 발생했습니다', code: 'SERVER_ERROR' }, 500);
+  }
+});
+
 Deno.serve(app.fetch);

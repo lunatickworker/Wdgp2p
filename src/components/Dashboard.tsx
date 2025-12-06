@@ -1,6 +1,7 @@
 import { TrendingUp, TrendingDown, Users, AlertTriangle, Wallet, Activity } from "lucide-react";
 import { NeonCard } from "./NeonCard";
 import { StatCard } from "./StatCard";
+import { CryptoPriceTicker } from "./CryptoPriceTicker";
 import { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase/client";
 import { useAuth } from "../contexts/AuthContext";
@@ -473,6 +474,9 @@ export function Dashboard() {
         <h2 className="text-cyan-400 mb-1">시스템 대시보드</h2>
         <p className="text-slate-400 text-sm">실시간 운영 현황 모니터링</p>
       </div>
+
+      {/* 실시간 암호화폐 시세 */}
+      <CryptoPriceTicker />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

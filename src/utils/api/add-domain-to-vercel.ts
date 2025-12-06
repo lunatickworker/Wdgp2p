@@ -1,4 +1,5 @@
 import { supabase } from '../supabase/client';
+import { SUPABASE_CONFIG } from '../config';
 
 export interface AddDomainRequest {
   centerId: string;
@@ -12,7 +13,7 @@ export interface AddDomainResponse {
 
 /**
  * Vercel API를 통해 도메인을 프로젝트에 자동 추가
- * 주의: Vite 환경에서는 import.meta.env를 사용해야 합니다
+ * Edge Function을 통해 처리 (서버 사이드에서 VERCEL_TOKEN 사용)
  */
 export async function addDomainToVercel(
   request: AddDomainRequest
@@ -20,82 +21,36 @@ export async function addDomainToVercel(
   try {
     const { centerId, domain } = request;
     
-    // 1. 센터 존재 확인
-    const { data: center, error: centerError } = await supabase
-      .from('users')
-      .select('user_id, center_name')
-      .eq('user_id', centerId)
-      .eq('role', 'center')
-      .maybeSingle();
+    console.log('🌐 Vercel 도메인 추가 요청:', { centerId, domain });
     
-    if (centerError || !center) {
-      return {
-        success: false,
-        error: '센터를 찾을 수 없습니다'
-      };
-    }
-    
-    // 2. Vercel API 호출 준비
-    const vercelToken = import.meta.env.VITE_VERCEL_TOKEN;
-    const projectId = import.meta.env.VITE_VERCEL_PROJECT_ID;
-    
-    if (!vercelToken || !projectId) {
-      return {
-        success: false,
-        error: 'Vercel API 토큰 또는 프로젝트 ID가 설정되지 않았습니다'
-      };
-    }
-    
-    const apiUrl = `https://api.vercel.com/v9/projects/${projectId}/domains`;
-    
-    // 3. Vercel API 호출 (주도메인 추가)
-    const response = await fetch(apiUrl, {
+    // Edge Function API 호출
+    const response = await fetch(`${SUPABASE_CONFIG.backendUrl}/api/vercel/add-domain`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${vercelToken}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_CONFIG.anonKey}`,
       },
-      body: JSON.stringify({
-        name: domain
-      })
+      body: JSON.stringify({ centerId, domain })
     });
     
     const result = await response.json();
     
     if (!response.ok) {
+      console.error('❌ Vercel API 호출 실패:', result);
       return {
         success: false,
-        error: result.error?.message || 'Vercel API 호출 실패'
+        error: result.error || 'Vercel 도메인 추가 실패'
       };
     }
     
-    // 4. admin 도메인 추가
-    const adminDomain = `admin.${domain}`;
-    const adminResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${vercelToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        name: adminDomain
-      })
-    });
-    
-    const adminResult = await adminResponse.json();
-    
-    if (!adminResponse.ok) {
-      return {
-        success: false,
-        error: adminResult.error?.message || 'Admin 도메인 추가 실패'
-      };
-    }
+    console.log('✅ Vercel 도메인 추가 성공:', result);
     
     return {
       success: true
     };
     
   } catch (error: any) {
+    console.error('❌ Vercel 도메인 추가 오류:', error);
     return {
       success: false,
       error: error.message || '도메인 추가 실패'
@@ -108,41 +63,36 @@ export async function addDomainToVercel(
  */
 export async function removeDomainFromVercel(domain: string): Promise<AddDomainResponse> {
   try {
-    const vercelToken = import.meta.env.VITE_VERCEL_TOKEN;
-    const projectId = import.meta.env.VITE_VERCEL_PROJECT_ID;
+    console.log('🗑️ Vercel 도메인 제거 요청:', domain);
     
-    if (!vercelToken || !projectId) {
+    // Edge Function API 호출
+    const response = await fetch(`${SUPABASE_CONFIG.backendUrl}/api/vercel/remove-domain`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_CONFIG.anonKey}`,
+      },
+      body: JSON.stringify({ domain })
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      console.error('❌ Vercel API 호출 실패:', result);
       return {
         success: false,
-        error: 'Vercel API 토큰 또는 프로젝트 ID가 설정되지 않았습니다'
+        error: result.error || 'Vercel 도메인 제거 실패'
       };
     }
     
-    const apiUrl = `https://api.vercel.com/v9/projects/${projectId}/domains/${domain}`;
-    
-    // 주도메인 삭제
-    await fetch(apiUrl, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${vercelToken}`
-      }
-    });
-    
-    // admin 도메인 삭제
-    const adminDomain = `admin.${domain}`;
-    const adminApiUrl = `https://api.vercel.com/v9/projects/${projectId}/domains/${adminDomain}`;
-    await fetch(adminApiUrl, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${vercelToken}`
-      }
-    });
+    console.log('✅ Vercel 도메인 제거 성공:', result);
     
     return {
       success: true
     };
     
   } catch (error: any) {
+    console.error('❌ Vercel 도메인 제거 오류:', error);
     return {
       success: false,
       error: error.message || '도메인 제거 실패'
