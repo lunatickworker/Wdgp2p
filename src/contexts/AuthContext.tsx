@@ -135,6 +135,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // 4. 신규 사용자 - users 테이블에 생성
       console.log('📝 Creating new user in database');
       
+      // 🔥 관리자 role인 경우 자동 삽입하지 않음 (센터 생성 API에서 처리)
+      const metadataRole = authUser.user_metadata?.role;
+      if (metadataRole && ['center', 'agency', 'store', 'admin', 'master'].includes(metadataRole)) {
+        console.log('⏭️ Admin role detected in metadata - skipping auto insert, waiting for API...');
+        
+        // 잠시 후 DB에서 조회 (센터 생성 API가 삽입할 때까지 대기)
+        setTimeout(async () => {
+          try {
+            const { data: adminUser, error: adminError } = await supabase
+              .from('users')
+              .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
+              .eq('user_id', authUser.id)
+              .maybeSingle();
+            
+            if (adminUser && !adminError) {
+              const loggedInUser: User = {
+                id: adminUser.user_id,
+                email: adminUser.email,
+                username: adminUser.username,
+                role: adminUser.role || 'user',
+                level: adminUser.level,
+                templateId: adminUser.template_id,
+                centerName: adminUser.center_name,
+                logoUrl: adminUser.logo_url,
+              };
+              
+              setUser(loggedInUser);
+              localStorage.setItem('user', JSON.stringify(loggedInUser));
+              console.log('✅ Admin user loaded from DB:', loggedInUser);
+            }
+          } catch (error) {
+            console.error('Error loading admin user:', error);
+          }
+        }, 1000); // 1초 후 조회
+        
+        return;
+      }
+      
       const newUser = {
         user_id: authUser.id,
         email: authUser.email,

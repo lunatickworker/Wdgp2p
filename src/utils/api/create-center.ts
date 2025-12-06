@@ -3,6 +3,15 @@ import { uploadCenterLogo } from './upload-logo';
 import { recordFeeRateChange } from './fee-rate-history';
 import bcrypt from 'bcryptjs';
 
+// UUID v4 생성 함수 (crypto API 사용)
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export interface CreateCenterRequest {
   centerName: string;
   domain?: string; // 선택사항
@@ -22,9 +31,7 @@ export interface CreateCenterResponse {
 
 /**
  * 센터 생성 API
- * 주의: 실제 환경에서는 비밀번호 해싱을 Edge Function에서 처리해야 합니다.
- * 클라이언트에서 bcrypt를 사용할 수 없으므로, 임시로 평문 저장하거나
- * Edge Function으로 요청을 보내야 합니다.
+ * 주의: 관리자 계정은 Supabase Auth를 사용하지 않고 DB에 직접 저장합니다.
  */
 export async function createCenter(
   request: CreateCenterRequest
@@ -102,47 +109,19 @@ export async function createCenter(
       };
     }
     
-    // 2. Supabase Auth에 센터 계정 생성
-    console.log('🔐 Auth 계정 생성 시작...');
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: email,
-      password: password,
-      options: {
-        emailRedirectTo: undefined, // 이메일 확인 비활성화
-        data: {
-          role: 'center',
-          center_name: centerName,
-        }
-      }
-    });
-
-    if (authError) {
-      console.error('❌ Auth 오류:', authError);
-      return {
-        success: false,
-        error: authError.message
-      };
-    }
-
-    if (!authData.user) {
-      console.error('❌ Auth 사용자 생성 실패');
-      return {
-        success: false,
-        error: '사용자 생성에 실패했습니다'
-      };
-    }
-
-    const centerId = authData.user.id;
-    console.log('✅ Auth 계정 생성 성공:', centerId);
+    // 2. UUID 생성 (Auth 사용 안함)
+    const centerId = generateUUID();
+    console.log('🆔 센터 UUID 생성:', centerId);
     
     // 3. 비밀번호 해시 생성
     const passwordHash = await bcrypt.hash(password, 10);
+    console.log('🔐 비밀번호 해시 생성 완료');
     
     // 4. 로고 업로드 (있을 경우)
     let logoUrl = null;
     if (logoFile) {
       const { success, logoUrl: uploadedUrl, error: uploadError } = await uploadCenterLogo({
-        centerId,
+        centerId: centerId,
         file: logoFile
       });
       
@@ -159,10 +138,10 @@ export async function createCenter(
     // 5. Users 테이블에 센터 정보 저장
     
     console.log('💾 Users 테이블 삽입 시작...');
-    const { error: insertError } = await supabase
+    const { data: userData, error: insertError } = await supabase
       .from('users')
       .insert({
-        user_id: centerId, // Auth에서 생성된 ID 사용
+        user_id: centerId, // 생성된 UUID 사용
         username: centerName, // username 필수 필드 추가
         role: 'center',
         tenant_id: centerId, // 센터는 자기 자신이 tenant_id
@@ -179,7 +158,9 @@ export async function createCenter(
         kyc_status: 'pending',
         balance: {},
         created_at: new Date().toISOString()
-      });
+      })
+      .select()
+      .single();
     
     if (insertError) {
       console.error('❌ Users 테이블 삽입 오류:', insertError);
@@ -189,7 +170,7 @@ export async function createCenter(
       };
     }
     
-    console.log('✅ Users 테이블 삽입 성공');
+    console.log('✅ Users 테이블 삽입 성공:', centerId);
     
     // 6. Domain Mappings 자동 생성 (도메인이 있을 경우에만)
     if (domain) {
