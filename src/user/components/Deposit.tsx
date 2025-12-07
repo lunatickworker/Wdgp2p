@@ -19,30 +19,39 @@ export function Deposit({ wallets, selectedCoin, onNavigate, onSelectCoin }: Dep
   const [isListening, setIsListening] = useState(false);
   const [coins, setCoins] = useState<CoinType[]>([]);
   const [coinIcons, setCoinIcons] = useState<Map<string, string>>(new Map());
+  const [coinDetails, setCoinDetails] = useState<Map<string, any>>(new Map());
 
-  // 코인 아이콘 로드
+  // 코인 상세 정보 로드 (아이콘, 네트워크, 최소 입금액 등)
   useEffect(() => {
-    const fetchCoinIcons = async () => {
+    const fetchCoinDetails = async () => {
       try {
         const { data: coinData } = await supabase
           .from('supported_tokens')
-          .select('symbol, icon_url');
+          .select('symbol, icon_url, network, min_deposit');
         
         if (coinData) {
           const iconMap = new Map<string, string>();
+          const detailsMap = new Map<string, any>();
+          
           coinData.forEach((coin: any) => {
             if (coin.icon_url) {
               iconMap.set(coin.symbol, coin.icon_url);
             }
+            detailsMap.set(coin.symbol, {
+              network: coin.network || 'Unknown Network',
+              minDeposit: coin.min_deposit || '0'
+            });
           });
+          
           setCoinIcons(iconMap);
+          setCoinDetails(detailsMap);
         }
       } catch (error) {
-        console.error('Error fetching coin icons:', error);
+        console.error('Error fetching coin details:', error);
       }
     };
 
-    fetchCoinIcons();
+    fetchCoinDetails();
   }, []);
 
   // 지갑이 있는 코인만 표시
@@ -162,27 +171,11 @@ export function Deposit({ wallets, selectedCoin, onNavigate, onSelectCoin }: Dep
   };
 
   const getNetworkInfo = (coin: CoinType) => {
-    const networks: { [key: string]: string } = {
-      BTC: 'Bitcoin Network',
-      ETH: 'Ethereum (ERC-20)',
-      USDT: 'Ethereum (ERC-20)',
-      USDC: 'Ethereum (ERC-20)',
-      BNB: 'BNB Smart Chain',
-      KRWQ: 'KRWQ Network'
-    };
-    return networks[coin] || 'Unknown';
+    return coinDetails.get(coin)?.network || 'Unknown';
   };
 
   const getMinDeposit = (coin: CoinType) => {
-    const minimums: { [key: string]: string } = {
-      BTC: '0.0001',
-      ETH: '0.01',
-      USDT: '10',
-      USDC: '10',
-      BNB: '0.01',
-      KRWQ: '1000'
-    };
-    return minimums[coin] || '0';
+    return coinDetails.get(coin)?.minDeposit || '0';
   };
 
   return (

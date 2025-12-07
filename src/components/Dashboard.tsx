@@ -110,8 +110,6 @@ export function Dashboard() {
 
   const fetchFilteredUsers = async (): Promise<string[]> => {
     try {
-      console.log('🔍 Fetching filtered users for dashboard...');
-      
       // Backend API로 필터링된 사용자 목록 가져오기
       const backendUrl = 'https://mzoeeqmtvlnyonicycvg.supabase.co/functions/v1/make-server-b6d5667f';
       const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16b2VlcW10dmxueW9uaWN5Y3ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5MjIyNzcsImV4cCI6MjA3ODQ5ODI3N30.oo7FsWjthtBtM-Xa1VFJieMGQ4mG__V8w7r9qGBPzaI';
@@ -149,7 +147,6 @@ export function Dashboard() {
       
       if (result.success && result.users) {
         const userIds = result.users.map((u: any) => u.user_id);
-        console.log('✅ Filtered user IDs for dashboard:', userIds.length);
         setFilteredUserIds(userIds);
         return userIds;
       } else {
@@ -347,8 +344,6 @@ export function Dashboard() {
       return;
     }
 
-    console.log('💰 Fetching wallet status for filtered users:', userIds.length);
-
     // Hot Wallet 잔액 (필터링된 사용자만)
     const { data: hotWallets } = await supabase
       .from('wallets')
@@ -357,7 +352,6 @@ export function Dashboard() {
       .eq('wallet_type', 'hot');
 
     const hotWalletTotal = hotWallets?.reduce((sum, w) => sum + Number(w.balance), 0) || 0;
-    console.log('🔥 Hot Wallet Total:', hotWalletTotal, 'from', hotWallets?.length, 'wallets');
 
     // Cold Wallet 잔액 (필터링된 사용자만)
     const { data: coldWallets } = await supabase
@@ -367,10 +361,8 @@ export function Dashboard() {
       .eq('wallet_type', 'cold');
 
     const coldWalletTotal = coldWallets?.reduce((sum, w) => sum + Number(w.balance), 0) || 0;
-    console.log('❄️ Cold Wallet Total:', coldWalletTotal, 'from', coldWallets?.length, 'wallets');
 
     const total = hotWalletTotal + coldWalletTotal;
-    console.log('📊 Total Wallet Balance:', total);
 
     setWalletStatus({
       hotWallet: hotWalletTotal,

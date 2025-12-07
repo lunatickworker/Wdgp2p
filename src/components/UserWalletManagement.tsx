@@ -312,7 +312,9 @@ export function UserWalletManagement() {
     });
 
     try {
-      const { isAvailable } = await checkEmailAvailability(email);
+      const isAvailable = await checkEmailAvailability(email);
+      
+      console.log('🔍 센터 회원추가 - 이메일 체크 결과:', isAvailable);
       
       setEmailValidation({
         isValid: true,

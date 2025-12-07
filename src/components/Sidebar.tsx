@@ -1,15 +1,13 @@
 import { LayoutDashboard, Users, Receipt, TrendingUp, DollarSign, Coins, Zap, Shield, MessageCircle, Settings, Home, Repeat, Store, User, Activity } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 
-export function Sidebar({ activeTab, setActiveTab }: { activeTab: string; setActiveTab: (tab: string) => void }) {
-  const { user } = useAuth();
+interface SidebarProps {
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+}
 
-  // 🔍 디버깅: 현재 사용자 정보 출력
-  console.log('🔍 Sidebar - Current User:', {
-    role: user?.role,
-    email: user?.email,
-    username: user?.username
-  });
+export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
+  const { user, logout } = useAuth();
 
   // Center Admin 메뉴 (센터 관리자)
   const centerMenuItems = [
@@ -65,12 +63,10 @@ export function Sidebar({ activeTab, setActiveTab }: { activeTab: string; setAct
     menuItems = masterMenuItems;
   }
 
-  // 🔍 디버깅: 할당된 메뉴 출력
-  console.log('🔍 Sidebar - Selected Menu:', {
-    role: user?.role,
-    menuCount: menuItems.length,
-    menuIds: menuItems.map(m => m.id)
-  });
+  const handleLogout = async () => {
+    await logout();
+    window.location.hash = '#admin/login';
+  };
 
   return (
     <aside className="w-64 bg-slate-900/50 backdrop-blur-xl border-r border-cyan-500/20">
@@ -115,6 +111,14 @@ export function Sidebar({ activeTab, setActiveTab }: { activeTab: string; setAct
             );
           })}
         </nav>
+
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 text-slate-400 hover:bg-slate-800/50 hover:text-cyan-300 border border-transparent"
+        >
+          <Users className="w-5 h-5" />
+          <span>로그아웃</span>
+        </button>
       </div>
     </aside>
   );

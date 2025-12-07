@@ -11,6 +11,7 @@ export async function listAllDomains() {
           center_name,
           template_id,
           logo_url,
+          email,
           created_at
         )
       `)

@@ -18,6 +18,7 @@ interface Center {
   design_theme: any;
   metadata: any;
   fee_rate: number;
+  mapped_domains?: string[]; // 도메인 매핑 추가
 }
 
 interface Agency {

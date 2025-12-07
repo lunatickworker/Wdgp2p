@@ -18,6 +18,7 @@ interface Center {
   created_at: string;
   parent_user_id: string | null;
   fee_rate: number;
+  mapped_domains?: Array<{ domain: string; domain_type: string }>; // 도메인 매핑 추가
 }
 
 export function CenterManagementCompact() {
@@ -40,14 +41,33 @@ export function CenterManagementCompact() {
   const fetchCenters = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      
+      // 1. 센터 목록 조회
+      const { data: centersData, error: centersError } = await supabase
         .from('users')
         .select('user_id, center_name, username, email, domain, logo_url, template_id, is_active, created_at, parent_user_id, fee_rate')
         .eq('role', 'center')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setCenters(data || []);
+      if (centersError) throw centersError;
+
+      // 2. 각 센터의 도메인 매핑 조회
+      const centersWithDomains = await Promise.all(
+        (centersData || []).map(async (center) => {
+          const { data: domainMappings } = await supabase
+            .from('domain_mappings')
+            .select('domain, domain_type')
+            .eq('center_id', center.user_id)
+            .order('domain_type'); // main 먼저, admin 나중에
+          
+          return {
+            ...center,
+            mapped_domains: domainMappings || []
+          };
+        })
+      );
+
+      setCenters(centersWithDomains);
     } catch (error) {
       console.error('센터 조회 실패:', error);
       toast.error('센터 목록을 불러오는데 실패했습니다');
@@ -328,14 +348,28 @@ export function CenterManagementCompact() {
                       </span>
                     </td>
                     <td className="py-3 px-3">
-                      <a
-                        href={`https://${center.domain}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-cyan-400 text-sm hover:underline"
-                      >
-                        {center.domain}
-                      </a>
+                      {center.mapped_domains && center.mapped_domains.length > 0 ? (
+                        <div className="space-y-1">
+                          {center.mapped_domains.map((dm, idx) => (
+                            <a
+                              key={idx}
+                              href={`https://${dm.domain}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`block text-sm hover:underline ${
+                                dm.domain_type === 'main' 
+                                  ? 'text-cyan-400' 
+                                  : 'text-purple-400'
+                              }`}
+                              title={dm.domain_type === 'main' ? '회원용' : '관리자용'}
+                            >
+                              {dm.domain}
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-500 text-sm">매핑 없음</span>
+                      )}
                     </td>
                     <td className="py-3 px-3">
                       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs capitalize ${getTemplateColor(center.template_id)}`}>

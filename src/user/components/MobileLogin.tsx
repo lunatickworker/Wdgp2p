@@ -3,6 +3,7 @@ import { Activity, Mail, Lock, LogIn, Eye, EyeOff, Sparkles, X, Users } from 'lu
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { supabase } from '../../utils/supabase/client';
+import { checkEmailAvailability } from '../../utils/api/check-email';
 
 export function MobileLogin() {
   const [email, setEmail] = useState('');
@@ -193,13 +194,11 @@ export function MobileLogin() {
       setIsLoading(true);
 
       // 이메일 중복 체크
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('email')
-        .eq('email', signUpData.email)
-        .single();
-
-      if (existingUser) {
+      const isEmailAvailable = await checkEmailAvailability(signUpData.email);
+      console.log('✅ 이메일 사용 가능 여부:', isEmailAvailable);
+      
+      if (!isEmailAvailable) {
+        console.log('❌ 이메일 중복 - 회원가입 중단');
         setSignUpErrors({ ...errors, email: '이미 사용 중인 이메일입니다' });
         toast.error('이미 사용 중인 이메일입니다', {
           duration: 3000,
@@ -208,6 +207,8 @@ export function MobileLogin() {
         });
         return;
       }
+      
+      console.log('✅ 이메일 사용 가능 - 회원가입 진행');
 
       // 추천인 코드 검증 (선택사항)
       let parentUserId = null;
@@ -253,14 +254,6 @@ export function MobileLogin() {
       });
 
       if (authError) {
-        // 상세 오류 로깅
-        console.error('Auth Error Details:', {
-          message: authError.message,
-          status: authError.status,
-          name: authError.name,
-          code: (authError as any).code
-        });
-        
         // Auth 오류 메시지 변환
         let errorMessage = authError.message || '회원가입 중 오류가 발생했습니다';
         

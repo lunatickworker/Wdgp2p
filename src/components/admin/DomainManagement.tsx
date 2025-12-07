@@ -23,6 +23,7 @@ interface DomainInfo {
   center?: {
     center_name: string;
     template_id: string;
+    email: string; // 이메일 추가
   };
 }
 
@@ -55,7 +56,7 @@ export function DomainManagement() {
       // 센터 목록 조회
       const { data: centerData, error } = await supabase
         .from('users')
-        .select('user_id, center_name, domain')
+        .select('user_id, center_name, domain, email') // 이메일 추가
         .eq('role', 'center')
         .order('created_at', { ascending: false });
 
@@ -189,6 +190,7 @@ export function DomainManagement() {
               <tr className="border-b border-slate-700">
                 <th className="px-6 py-4 text-left text-cyan-400">도메인</th>
                 <th className="px-6 py-4 text-left text-cyan-400">센터</th>
+                <th className="px-6 py-4 text-left text-cyan-400">이메일</th>
                 <th className="px-6 py-4 text-left text-cyan-400">타입</th>
                 <th className="px-6 py-4 text-left text-cyan-400">상태</th>
                 <th className="px-6 py-4 text-left text-cyan-400">생성일</th>
@@ -198,7 +200,7 @@ export function DomainManagement() {
             <tbody>
               {domains.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
                     등록된 도메인이 없습니다
                   </td>
                 </tr>
@@ -218,6 +220,9 @@ export function DomainManagement() {
                     </td>
                     <td className="px-6 py-4 text-slate-300">
                       {domain.center?.center_name || '알 수 없음'}
+                    </td>
+                    <td className="px-6 py-4 text-slate-400 text-sm">
+                      {domain.center?.email || '-'}
                     </td>
                     <td className="px-6 py-4">
                       <span
