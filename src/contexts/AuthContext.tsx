@@ -248,6 +248,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
       const isFigmaEnv = hostname.includes('.figma.com') || hostname.includes('figma.site') || hostname.includes('fig.ma');
       
+      // 항상 백엔드 API를 먼저 시도 (bcrypt 호환성)
+      try {
+        const backendUrl = 'https://mzoeeqmtvlnyonicycvg.supabase.co/functions/v1/make-server-b6d5667f';
+        const response = await fetch(`${backendUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16b2VlcW10dmxueW9uaWN5Y3ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5MjIyNzcsImV4cCI6MjA3ODQ5ODI3N30.oo7FsWjthtBtM-Xa1VFJieMGQ4mG__V8w7r9qGBPzaI`,
+          },
+          body: JSON.stringify({ email, password })
+        });
+
+        if (response.ok) {
+          const { user: userData } = await response.json();
+
+          if (userData.status === 'pending') {
+            throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
+          }
+
+          const loggedInUser: User = {
+            id: userData.user_id,
+            email: userData.email,
+            username: userData.username,
+            role: userData.role || 'user',
+            level: userData.level,
+            templateId: userData.template_id,
+            centerName: userData.center_name,
+            logoUrl: userData.logo_url
+          };
+
+          if (isAdminPage && !['center', 'agency', 'store', 'admin', 'master'].includes(loggedInUser.role)) {
+            throw new Error('관리자 권한이 필요합니다');
+          }
+
+          setUser(loggedInUser);
+          localStorage.setItem('user', JSON.stringify(loggedInUser));
+          return loggedInUser;
+        }
+      } catch (backendError) {
+        console.log('Backend login failed, trying Supabase Auth...', backendError);
+      }
+      
       if (isFigmaEnv) {
         return await performDBPasswordLogin(email, password, isAdminPage);
       }
@@ -325,7 +367,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isPasswordValid = false;
     
     try {
-      if (userData.password_hash.startsWith('$2a$') || userData.password_hash.startsWith('$2b$')) {
+      if (userData.password_hash.startsWith('$2a$') || 
+          userData.password_hash.startsWith('$2b$') || 
+          userData.password_hash.startsWith('$2y$')) {
         isPasswordValid = await bcrypt.compare(password, userData.password_hash);
       } else {
         isPasswordValid = userData.password_hash === password;

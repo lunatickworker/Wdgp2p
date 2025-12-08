@@ -269,7 +269,9 @@ app.post("/make-server-b6d5667f/api/auth/login", async (c) => {
     // bcrypt 해시인지 평문인지 확인
     let isPasswordValid = false;
     
-    if (userData.password_hash.startsWith('$2a$') || userData.password_hash.startsWith('$2b$')) {
+    if (userData.password_hash.startsWith('$2a$') || 
+        userData.password_hash.startsWith('$2b$') || 
+        userData.password_hash.startsWith('$2y$')) {
       // bcrypt 해시인 경우
       console.log('🔐 Comparing bcrypt hash...');
       isPasswordValid = await bcrypt.compare(password, userData.password_hash);
