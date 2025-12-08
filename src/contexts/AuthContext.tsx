@@ -296,155 +296,113 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Figma 환경에서는 바로 DB 비밀번호 검증
       if (isFigmaEnv) {
         console.log('🎨 Figma 환경 감지 - DB 비밀번호 검증 시도');
-        
-        // 1. 사용자 조회 (password_hash 포함)
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('user_id, email, username, role, level, template_id, center_name, logo_url, password_hash, status')
-          .eq('email', email)
-          .maybeSingle();
-        
-        if (userError || !userData) {
-          console.error('User lookup error:', userError);
-          throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
-        }
-        
-        console.log('User found:', { email: userData.email, role: userData.role, status: userData.status });
-        
-        // 승인대기 상태 체크
-        if (userData.status === 'pending') {
-          throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
-        }
-        
-        // 2. 비밀번호 검증
-        if (!userData.password_hash) {
-          console.error('No password_hash found in database');
-          throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
-        }
-        
-        // bcrypt 해시 비교 또는 평문 비교 (하위 호환성)
-        let isPasswordValid = false;
-        
-        if (userData.password_hash.startsWith('$2a$') || userData.password_hash.startsWith('$2b$')) {
-          // bcrypt 해시인 경우
-          console.log('🔐 Comparing bcrypt hash...');
-          isPasswordValid = await bcrypt.compare(password, userData.password_hash);
-        } else {
-          // 평문 비밀번호인 경우 (기존 사용자)
-          console.log('🔐 Comparing plain text password...');
-          isPasswordValid = userData.password_hash === password;
-        }
-        
-        if (!isPasswordValid) {
-          console.error('Password mismatch');
-          throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
-        }
-        
-        console.log('✅ Password verified successfully');
-        
-        const loggedInUser: User = {
-          id: userData.user_id,
-          email: userData.email,
-          username: userData.username,
-          role: userData.role || 'user',
-          level: userData.level,
-          templateId: userData.template_id,
-          centerName: userData.center_name,
-          logoUrl: userData.logo_url
-        };
-        
-        // 역할 검증
-        if (isAdminPage && !['center', 'agency', 'store', 'admin', 'master'].includes(loggedInUser.role)) {
-          throw new Error('관리자 권한이 필요합니다');
-        }
-        
-        setUser(loggedInUser);
-        localStorage.setItem('user', JSON.stringify(loggedInUser));
-        
-        console.log('✅ Figma 환경 로그인 성공:', loggedInUser);
-        return loggedInUser;
+        return await performDBPasswordLogin(email, password, isAdminPage);
       }
 
       // 프로덕션 환경: Auth 로그인 시도 (일반 회원용)
       console.log('🌐 프로덕션 환경 - Auth 로그인 시도');
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
 
-      if (authData.user && !authError) {
-        // Auth 로그인 성공 - users 테이블에서 추가 정보 조회
-        console.log('✅ Auth 로그인 성공 - 사용자 정보 조회 중...');
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
-          .eq('user_id', authData.user.id)
-          .maybeSingle();
+        if (authData.user && !authError) {
+          // Auth 로그인 성공 - users 테이블에서 추가 정보 조회
+          console.log('✅ Auth 로그인 성공 - 사용자 정보 조회 중...');
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
+            .eq('user_id', authData.user.id)
+            .maybeSingle();
 
-        if (userData) {
-          // 승인대기 상태 체크
-          if (userData.status === 'pending') {
-            await supabase.auth.signOut(); // 로그아웃
-            throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
+          if (userData) {
+            // 승인대기 상태 체크
+            if (userData.status === 'pending') {
+              await supabase.auth.signOut(); // 로그아웃
+              throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
+            }
+
+            const loggedInUser: User = {
+              id: userData.user_id,
+              email: userData.email,
+              username: userData.username,
+              role: userData.role || 'user',
+              level: userData.level,
+              templateId: userData.template_id,
+              centerName: userData.center_name,
+              logoUrl: userData.logo_url
+            };
+
+            // 역할 검증
+            if (isAdminPage && !['center', 'agency', 'store', 'admin', 'master'].includes(loggedInUser.role)) {
+              await supabase.auth.signOut();
+              throw new Error('관리자 권한이 필요합니다');
+            }
+
+            setUser(loggedInUser);
+            localStorage.setItem('user', JSON.stringify(loggedInUser));
+
+            console.log('✅ Auth 로그인 성공:', loggedInUser);
+            return loggedInUser;
           }
-
-          const loggedInUser: User = {
-            id: userData.user_id,
-            email: userData.email,
-            username: userData.username,
-            role: userData.role || 'user',
-            level: userData.level,
-            templateId: userData.template_id,
-            centerName: userData.center_name,
-            logoUrl: userData.logo_url
-          };
-
-          // 역할 검증
-          if (isAdminPage && !['center', 'agency', 'store', 'admin', 'master'].includes(loggedInUser.role)) {
-            await supabase.auth.signOut();
-            throw new Error('관리자 권한이 필요합니다');
-          }
-
-          setUser(loggedInUser);
-          localStorage.setItem('user', JSON.stringify(loggedInUser));
-
-          console.log('✅ Auth 로그인 성공:', loggedInUser);
-          return loggedInUser;
         }
+        
+        // Auth 로그인 실패 - 에러 로그
+        console.log('⚠️ Auth 로그인 실패:', authError);
+      } catch (authException) {
+        console.log('⚠️ Auth 로그인 예외 발생:', authException);
       }
       
       // Auth 로그인 실패 → DB 비밀번호 검증으로 fallback (관리자 계정용)
-      console.log('⚠️ Auth 로그인 실패 - DB 비밀번호 검증 시도');
-      console.log('Auth error:', authError);
+      console.log('⚠️ Auth 로그인 실패 - DB 비밀번호 검증으로 fallback');
+      return await performDBPasswordLogin(email, password, isAdminPage);
       
-      // 1. 사용자 조회 (password_hash 포함)
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('user_id, email, username, role, level, template_id, center_name, logo_url, password_hash, status')
-        .eq('email', email)
-        .maybeSingle();
-      
-      if (userError || !userData) {
-        console.error('❌ User lookup error:', userError);
-        throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
-      }
-      
-      console.log('📝 User found in DB:', { email: userData.email, role: userData.role, status: userData.status });
-      
-      // 승인대기 상태 체크
-      if (userData.status === 'pending') {
-        throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
-      }
-      
-      // 2. 비밀번호 검증
-      if (!userData.password_hash) {
-        console.error('❌ No password_hash found in database');
-        throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
-      }
-      
-      // bcrypt 해시 비교 또는 평문 비교 (하위 호환성)
-      let isPasswordValid = false;
-      
+    } catch (error: any) {
+      console.error('❌ Login error:', error);
+      throw error;
+    }
+  };
+
+  // DB 비밀번호 검증 함수 (재사용 가능)
+  const performDBPasswordLogin = async (email: string, password: string, isAdminPage: boolean): Promise<User> => {
+    console.log('🔍 DB 비밀번호 검증 시작:', email);
+    
+    // 1. 사용자 조회 (password_hash 포함)
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('user_id, email, username, role, level, template_id, center_name, logo_url, password_hash, status')
+      .eq('email', email)
+      .maybeSingle();
+    
+    if (userError) {
+      console.error('❌ DB 조회 에러:', userError);
+      throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
+    }
+    
+    if (!userData) {
+      console.error('❌ 사용자를 찾을 수 없음');
+      throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
+    }
+    
+    console.log('📝 User found in DB:', { email: userData.email, role: userData.role, status: userData.status, hasPasswordHash: !!userData.password_hash });
+    
+    // 승인대기 상태 체크
+    if (userData.status === 'pending') {
+      throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
+    }
+    
+    // 2. 비밀번호 검증
+    if (!userData.password_hash) {
+      console.error('❌ No password_hash found in database');
+      throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
+    }
+    
+    // bcrypt 해시 비교 또는 평문 비교 (하위 호환성)
+    let isPasswordValid = false;
+    
+    try {
       if (userData.password_hash.startsWith('$2a$') || userData.password_hash.startsWith('$2b$')) {
         // bcrypt 해시인 경우
         console.log('🔐 Comparing bcrypt hash...');
@@ -454,40 +412,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('🔐 Comparing plain text password...');
         isPasswordValid = userData.password_hash === password;
       }
-      
-      if (!isPasswordValid) {
-        console.error('❌ Password mismatch');
-        throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
-      }
-      
-      console.log('✅ DB 비밀번호 검증 성공');
-      
-      const loggedInUser: User = {
-        id: userData.user_id,
-        email: userData.email,
-        username: userData.username,
-        role: userData.role || 'user',
-        level: userData.level,
-        templateId: userData.template_id,
-        centerName: userData.center_name,
-        logoUrl: userData.logo_url
-      };
-      
-      // 역할 검증
-      if (isAdminPage && !['center', 'agency', 'store', 'admin', 'master'].includes(loggedInUser.role)) {
-        throw new Error('관리자 권한이 필요합니다');
-      }
-      
-      setUser(loggedInUser);
-      localStorage.setItem('user', JSON.stringify(loggedInUser));
-      
-      console.log('✅ DB 비밀번호 검증 로그인 성공:', loggedInUser);
-      return loggedInUser;
-      
-    } catch (error: any) {
-      console.error('❌ Login error:', error);
-      throw error;
+    } catch (bcryptError) {
+      console.error('❌ Password comparison error:', bcryptError);
+      throw new Error('비밀번호 검증 중 오류가 발생했습니다');
     }
+    
+    console.log('🔐 Password validation result:', isPasswordValid);
+    
+    if (!isPasswordValid) {
+      console.error('❌ Password mismatch');
+      throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
+    }
+    
+    console.log('✅ DB 비밀번호 검증 성공');
+    
+    const loggedInUser: User = {
+      id: userData.user_id,
+      email: userData.email,
+      username: userData.username,
+      role: userData.role || 'user',
+      level: userData.level,
+      templateId: userData.template_id,
+      centerName: userData.center_name,
+      logoUrl: userData.logo_url
+    };
+    
+    // 역할 검증
+    if (isAdminPage && !['center', 'agency', 'store', 'admin', 'master'].includes(loggedInUser.role)) {
+      console.error('❌ 관리자 권한 없음:', loggedInUser.role);
+      throw new Error('관리자 권한이 필요합니다');
+    }
+    
+    setUser(loggedInUser);
+    localStorage.setItem('user', JSON.stringify(loggedInUser));
+    
+    console.log('✅ DB 비밀번호 검증 로그인 완료:', loggedInUser);
+    return loggedInUser;
   };
 
   const logout = () => {
