@@ -3,6 +3,7 @@ import { X, Users, Mail, Phone, Building2, Check, AlertCircle } from "lucide-rea
 import { supabase } from "../../utils/supabase/client";
 import { checkEmailAvailability } from "../../utils/api/check-email";
 import { toast } from "sonner@2.0.3";
+import bcrypt from 'bcryptjs';
 import { useAuth } from "../../contexts/AuthContext";
 
 interface CreateAgencyModalProps {
@@ -64,20 +65,31 @@ export function CreateAgencyModal({ onClose, onSuccess }: CreateAgencyModalProps
     try {
       setLoading(true);
 
-      // Edge Function 호출하여 에이전시 생성
-      const { data: createData, error: createError } = await supabase.functions.invoke('create-agency', {
-        body: {
-          email: formData.email,
-          password: formData.password,
-          agencyName: formData.agencyName,
-          phone: formData.phone || null,
-          masterId: user?.id
-        }
-      });
+      // 1. DB에 사용자 생성 (Auth 없이)
+      const agencyId = self.crypto.randomUUID();
+      const passwordHash = await bcrypt.hash(formData.password, 10);
+      const referralCode = formData.email.split('@')[0].toLowerCase();
 
-      if (createError || !createData?.success) {
-        console.error('❌ 에이전시 생성 실패:', createError || createData);
-        throw new Error(createData?.error || '에이전시 생성에 실패했습니다');
+      const { error: dbError } = await supabase
+        .from('users')
+        .insert({
+          user_id: agencyId,
+          email: formData.email,
+          username: formData.agencyName,
+          center_name: formData.agencyName,
+          password_hash: passwordHash,
+          referral_code: referralCode,
+          role: 'agency',
+          parent_user_id: user?.id,
+          level: 'Standard',
+          status: 'active',
+          is_active: true,
+          created_at: new Date().toISOString(),
+        });
+
+      if (dbError) {
+        console.error('DB error:', dbError);
+        throw dbError;
       }
 
       toast.success('에이전시가 성공적으로 생성되었습니다');

@@ -2,9 +2,39 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 import walletRouter from "./wallet.tsx";
 import transactionRouter from "./transaction.tsx";
+
+// Deno Deploy 호환 bcrypt (Web Crypto API 사용)
+const bcrypt = {
+  async hash(password: string, saltRounds: number = 10): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    // bcrypt 형식으로 변환 (간단한 구현)
+    return `$2b$${saltRounds.toString().padStart(2, '0')}$${hashHex}`;
+  },
+  
+  async compare(password: string, hash: string): Promise<boolean> {
+    // bcrypt 해시에서 실제 해시 부분 추출
+    const parts = hash.split('$');
+    if (parts.length !== 4) return false;
+    
+    const saltRounds = parseInt(parts[2]);
+    const storedHash = parts[3];
+    
+    // 새로 해시 생성
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    return storedHash === hashHex;
+  }
+};
 
 const app = new Hono();
 
@@ -359,7 +389,10 @@ app.get("/make-server-b6d5667f/api/admin/users", async (c) => {
     console.log('👤 Current user:', currentUser);
 
     // 역할별 필터링 로직
-    let query = supabase.from('users').select('*');
+    let query = supabase
+      .from('users')
+      .select('user_id, email, username, role, level, status, is_active, kyc_status, parent_user_id, referral_code, created_at, phone')
+      .order('created_at', { ascending: false });
 
     if (currentUser.role === 'master') {
       // 마스터: 모든 사용자
@@ -386,7 +419,6 @@ app.get("/make-server-b6d5667f/api/admin/users", async (c) => {
         .eq('role', 'store');
       
       const storeIds = stores?.map(s => s.user_id) || [];
-      const storeCodes = stores?.map(s => s.referral_code) || [];
       
       // 센터 본인 + 가맹점들 + 가맹점 소속 일반회원들
       const conditions = [

@@ -6,6 +6,7 @@ import { checkEmailAvailability } from "../utils/api/check-email";
 import { toast } from "sonner@2.0.3";
 import { recordFeeRateChange, getFeeRateHistory } from "../utils/api/fee-rate-history";
 import { EditStoreModal } from "./center/EditStoreModal";
+import bcrypt from 'bcryptjs';
 
 interface StoreData {
   user_id: string;
@@ -94,25 +95,40 @@ export function StoreManagement() {
 
       console.log('📝 Creating store account...');
 
-      // Edge Function 호출하여 가맹점 생성
-      const { data: createData, error: createError } = await supabase.functions.invoke('create-store', {
-        body: {
-          email: formData.email,
-          password: formData.password,
-          username: formData.username,
-          storeName: formData.username,
-          centerId: user?.id,
-          receivingWallet: null,
-          feeRate: 5
-        }
-      });
+      // 비밀번호 해시 생성
+      const passwordHash = await bcrypt.hash(formData.password, 10);
+      const referralCode = formData.email.split('@')[0].toLowerCase();
 
-      if (createError || !createData?.success) {
-        console.error('❌ 가맹점 생성 실패:', createError || createData);
-        throw new Error(createData?.error || '가맹점 생성에 실패했습니다');
+      // UUID 생성
+      const userId = crypto.randomUUID();
+      
+      console.log('📝 Inserting user data with password_hash...', userId);
+      
+      // Users 테이블에 먼저 생성
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          user_id: userId,
+          username: formData.username,
+          email: formData.email,
+          password_hash: passwordHash,
+          referral_code: referralCode,
+          role: 'store',
+          status: 'active',
+          parent_user_id: user?.id,
+          tenant_id: user?.id,
+          is_active: true,
+          kyc_status: 'pending',
+          balance: {},
+          fee_rate: 5,
+        });
+
+      if (insertError) {
+        console.error('Insert error:', insertError);
+        throw insertError;
       }
 
-      console.log('✅ Store created successfully:', createData.userId);
+      console.log('✅ Store created in DB successfully');
       
       toast.success('가맹점이 생성되었습니다');
       setFormData({ username: "", email: "", password: "" });
@@ -183,17 +199,16 @@ export function StoreManagement() {
 
       // 비밀번호 변경 시
       if (editFormData.password) {
-        // Edge Function 호출하여 비밀번호 변경
-        const { data: resetData, error: resetError } = await supabase.functions.invoke('reset-password', {
-          body: {
-            userId: selectedStore.user_id,
-            newPassword: editFormData.password
-          }
-        });
-
-        if (resetError || !resetData?.success) {
-          console.error('❌ 비밀번호 변경 실패:', resetError || resetData);
-          throw new Error(resetData?.error || '비밀번호 변경에 실패했습니다');
+        updateData.password_hash = editFormData.password;
+        
+        // Auth 비밀번호도 업데이트
+        const { error: authError } = await supabase.auth.admin.updateUserById(
+          selectedStore.user_id,
+          { password: editFormData.password }
+        );
+        
+        if (authError) {
+          console.error('Auth 비밀번호 변경 실패:', authError);
         }
       }
 

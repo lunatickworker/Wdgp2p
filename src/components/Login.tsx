@@ -18,22 +18,26 @@ export function Login({ onLoginSuccess }: LoginProps) {
     setIsLoading(true);
 
     try {
-      const user = await login(email, password);
+      // admin 페이지에서 로그인하는 것으로 표시
+      const user = await login(email, password, true);
       toast.success('로그인 성공');
       
-      // onLoginSuccess 먼저 호출하여 상태 업데이트
-      onLoginSuccess?.();
+      console.log('🔄 Redirecting user with role:', user.role);
       
-      // 약간의 딜레이 후 라우팅 (상태 업데이트 완료 대기)
-      setTimeout(() => {
-        if (user.role === 'master') {
-          window.location.hash = '#master';
-        } else if (['center', 'agency', 'store', 'admin'].includes(user.role)) {
-          window.location.hash = '#admin';
-        } else {
-          window.location.hash = '';
-        }
-      }, 50);
+      // 역할에 따라 즉시 리디렉션
+      if (user.role === 'master') {
+        console.log('→ Redirecting to #master');
+        window.location.hash = '#master';
+      } else if (['center', 'agency', 'store', 'admin'].includes(user.role)) {
+        console.log('→ Redirecting to #admin');
+        window.location.hash = '#admin';
+      } else {
+        console.log('→ Redirecting to home');
+        window.location.hash = '';
+      }
+      
+      // onLoginSuccess 호출하여 상태 업데이트
+      onLoginSuccess?.();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '로그인 실패');
     } finally {

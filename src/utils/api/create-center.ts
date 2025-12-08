@@ -1,6 +1,7 @@
 import { supabase } from '../supabase/client';
 import { uploadCenterLogo } from './upload-logo';
 import { recordFeeRateChange } from './fee-rate-history';
+import bcrypt from 'bcryptjs';
 
 // UUID v4 생성 함수 (crypto API 사용)
 function generateUUID(): string {
@@ -112,7 +113,11 @@ export async function createCenter(
     const centerId = generateUUID();
     console.log('🆔 센터 UUID 생성:', centerId);
     
-    // 3. 로고 업로드 (있을 경우)
+    // 3. 비밀번호 해시 생성
+    const passwordHash = await bcrypt.hash(password, 10);
+    console.log('🔐 비밀번호 해시 생성 완료');
+    
+    // 4. 로고 업로드 (있을 경우)
     let logoUrl = null;
     if (logoFile) {
       const { success, logoUrl: uploadedUrl, error: uploadError } = await uploadCenterLogo({
@@ -130,46 +135,56 @@ export async function createCenter(
       logoUrl = uploadedUrl;
     }
     
-    // 4. Edge Function 호출하여 센터 생성
-    console.log('💾 Edge Function 호출하여 센터 생성...');
-    const { data: createData, error: createError } = await supabase.functions.invoke('create-center', {
-      body: {
-        email,
-        password,
-        centerName,
-        domain: domain || null,
-        templateId: templateId || 'modern',
-        logoUrl,
-        parentAgencyId: parentAgencyId || null,
-        feeRate: feeRate || 3.0
-      }
-    });
+    // 5. Users 테이블에 센터 정보 저장
     
-    if (createError || !createData?.success) {
-      console.error('❌ 센터 생성 실패:', createError || createData);
+    console.log('💾 Users 테이블 삽입 시작...');
+    const { data: userData, error: insertError } = await supabase
+      .from('users')
+      .insert({
+        user_id: centerId, // 생성된 UUID 사용
+        username: centerName, // username 필수 필드 추가
+        role: 'center',
+        tenant_id: centerId, // 센터는 자기 자신이 tenant_id
+        parent_user_id: parentAgencyId || null, // 에이전시 ID 또는 null (마스터 직속)
+        email,
+        password_hash: passwordHash, // 해시된 비밀번호 저장
+        referral_code: referralCode, // 이메일 @ 앞부분을 추천인 코드로
+        center_name: centerName,
+        domain: domain || null, // 도메인 없으면 null
+        template_id: templateId || 'modern',
+        logo_url: logoUrl,
+        fee_rate: feeRate || 3.0, // 수수료율 (기본값 3%)
+        is_active: true,
+        kyc_status: 'pending',
+        balance: {},
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+    
+    if (insertError) {
+      console.error('❌ Users 테이블 삽입 오류:', insertError);
       return {
         success: false,
-        error: createData?.error || '센터 생성에 실패했습니다'
+        error: insertError.message
       };
     }
     
-    // Edge Function에서 생성된 centerId 사용
-    const finalCenterId = createData.centerId;
-    console.log('✅ 센터 생성 성공:', finalCenterId);
+    console.log('✅ Users 테이블 삽입 성공:', centerId);
     
-    // 5. Domain Mappings 자동 생성 (도메인이 있을 경우에만)
+    // 6. Domain Mappings 자동 생성 (도메인이 있을 경우에만)
     if (domain) {
       console.log('🌐 Domain Mappings 생성 시작...');
       const domainMappings = [
         {
           domain: domain, // example.com
-          center_id: finalCenterId,
+          center_id: centerId,
           domain_type: 'main', // 회원용
           is_active: true
         },
         {
           domain: `admin.${domain}`, // admin.example.com
-          center_id: finalCenterId,
+          center_id: centerId,
           domain_type: 'admin', // 센터/가맹점 관리자용
           is_active: true
         }
@@ -182,7 +197,7 @@ export async function createCenter(
       if (mappingError) {
         console.error('❌ Domain Mappings 생성 오류:', mappingError);
         // 롤백: 생성된 센터 삭제
-        await supabase.from('users').delete().eq('user_id', finalCenterId);
+        await supabase.from('users').delete().eq('user_id', centerId);
         
         return {
           success: false,
@@ -195,10 +210,10 @@ export async function createCenter(
       console.log('⏭️ 도메인 없음 - Domain Mappings 생성 생략');
     }
     
-    // 6. 수수료율 초기 이력 기록
+    // 7. 수수료율 초기 이력 기록
     console.log('📊 수수료율 이력 기록 시작...');
     await recordFeeRateChange({
-      centerId: finalCenterId,
+      centerId,
       oldRate: null,
       newRate: feeRate,
       changedBy: 'system'
@@ -206,10 +221,10 @@ export async function createCenter(
     
     console.log('✅ 센터 생성 완료!');
     
-    // 7. 성공
+    // 8. 성공
     return {
       success: true,
-      centerId: finalCenterId
+      centerId
     };
     
   } catch (error: any) {

@@ -179,20 +179,9 @@ export function EditCenterModal({ center, onClose, onSuccess }: EditCenterModalP
         updated_at: new Date().toISOString()
       };
 
-      // 새 비밀번호가 입력된 경우
+      // 새 비밀번호가 입력된 경우 추가
       if (formData.new_password) {
-        // Edge Function 호출하여 비밀번호 변경
-        const { data: resetData, error: resetError } = await supabase.functions.invoke('reset-password', {
-          body: {
-            userId: center.user_id,
-            newPassword: formData.new_password
-          }
-        });
-
-        if (resetError || !resetData?.success) {
-          console.error('❌ 비밀번호 변경 실패:', resetError || resetData);
-          throw new Error(resetData?.error || '비밀번호 변경에 실패했습니다');
-        }
+        updateData.password_hash = formData.new_password;
       }
 
       // 수수료율이 변경된 경우에만 이력 기록

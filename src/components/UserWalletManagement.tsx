@@ -4,6 +4,7 @@ import { supabase } from "../utils/supabase/client";
 import { toast } from "sonner@2.0.3";
 import { useAuth } from "../contexts/AuthContext";
 import { checkEmailAvailability } from "../utils/api/check-email";
+import bcrypt from 'bcryptjs';
 
 interface UserData {
   user_id: string;
@@ -381,23 +382,33 @@ export function UserWalletManagement() {
         return;
       }
 
-      // Edge Function 호출하여 회원 생성
-      const { data: createData, error: createError } = await supabase.functions.invoke('create-user', {
-        body: {
+      // 회원 생성 (Auth 없이 DB에만 저장)
+      const userId = self.crypto.randomUUID();
+      const passwordHash = await bcrypt.hash(createUserForm.password, 10);
+
+      // users 테이블에 사용자 정보 저장
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          user_id: userId,
           email: createUserForm.email,
-          password: createUserForm.password,
           username: createUserForm.username,
+          password_hash: passwordHash,
           phone: createUserForm.phoneNumber || null,
-          storeId: createUserForm.storeId
-        }
-      });
+          referral_code: createUserForm.email.split('@')[0].toLowerCase(), // 이메일 @ 앞부분을 추천인 코드로
+          role: 'user',
+          level: 'Basic',
+          parent_user_id: createUserForm.storeId,
+          tenant_id: createUserForm.storeId, // 소속 가맹점을 tenant_id로 사용
+          status: 'active',
+          is_active: true,
+          kyc_status: 'pending',
+        });
 
-      if (createError || !createData?.success) {
-        console.error('❌ 회원 생성 실패:', createError || createData);
-        throw new Error(createData?.error || '회원 생성에 실패했습니다');
+      if (insertError) {
+        console.error('❌ DB Insert Error:', insertError);
+        throw new Error('데이터베이스 저장 중 오류가 발생했습니다');
       }
-
-      const userId = createData.userId;
 
       toast.success('회원이 추가되었습니다');
       setShowCreateUserModal(false);
@@ -571,23 +582,23 @@ export function UserWalletManagement() {
     if (!selectedUser || !generatedPassword) return;
 
     try {
-      // Edge Function 호출하여 비밀번호 재설정
-      const { data, error } = await supabase.functions.invoke('reset-password', {
-        body: {
-          userId: selectedUser.user_id,
-          newPassword: generatedPassword
-        }
-      });
+      // 비밀번호 해시 생성
+      const passwordHash = await bcrypt.hash(generatedPassword, 10);
+      
+      // users 테이블에 임시 비밀번호 저장 (bcrypt 해시로 저장)
+      const { error } = await supabase
+        .from('users')
+        .update({ 
+          password_hash: passwordHash
+        })
+        .eq('user_id', selectedUser.user_id);
 
-      if (error || !data?.success) {
-        console.error('❌ 비밀번호 재설정 실패:', error || data);
-        throw new Error(data?.error || '비밀번호 재설정에 실패했습니다');
-      }
+      if (error) throw error;
 
       toast.success('비밀번호가 초기화되었습니다. 새 비밀번호를 사용자에게 안전하게 전달하세요.');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Password reset error:', error);
-      toast.error(error.message || '비밀번호 초기화에 실패했습니다');
+      toast.error('비밀번호 초기화에 실패했습니다');
     }
   };
 

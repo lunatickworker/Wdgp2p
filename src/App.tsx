@@ -47,14 +47,13 @@ function AppContent() {
   useEffect(() => {
     async function loadTenantInfo() {
       try {
-        setDomainLoading(true);
-        
-        // 현재 도메인의 Tenant 정보 조회
+        // 현재 도메인의 Tenant 정보 조회 (백그라운드)
         const tenant = await getTenantInfo();
         const type = await getDomainType();
         
         setTenantInfo(tenant);
         setDomainType(type);
+        setDomainLoading(false); // 로딩 완료
         
         // 🔥 admin 서브도메인이면 자동으로 /#admin으로 리디렉션
         // 단, 이미 hash가 있는 경우는 건드리지 않음
@@ -63,11 +62,14 @@ function AppContent() {
         }
       } catch (error) {
         console.error('[App] Tenant 정보 로드 실패:', error);
-      } finally {
-        setDomainLoading(false);
+        setDomainLoading(false); // 에러 발생해도 로딩 해제
       }
     }
 
+    // 도메인 로딩은 즉시 완료로 설정 (블로킹 방지)
+    setDomainLoading(false);
+    
+    // 백그라운드에서 Tenant 정보 로드
     loadTenantInfo();
   }, []);
 
@@ -75,12 +77,13 @@ function AppContent() {
   // 라우팅 로직 (간단 버전)
   // ============================================
   useEffect(() => {
+    console.log('🔄 Routing effect triggered:', { user: user?.email, role: user?.role, isLoading });
+    
     // 로딩 중이면 대기
     if (isLoading) return;
 
     const hash = window.location.hash.slice(1); // # 제거
-    const hostname = window.hostname;
-    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    console.log('📍 Current hash:', hash);
 
     // ==========================================
     // 1. Hash 라우팅 (우선순위 1)
@@ -89,8 +92,10 @@ function AppContent() {
     // #master 경로
     if (hash.startsWith('master')) {
       if (user?.role === 'master') {
+        console.log('✅ Setting route to master');
         setCurrentRoute('master');
       } else {
+        console.log('❌ Not master, showing login');
         setCurrentRoute('admin-login');
       }
       return;
@@ -98,6 +103,7 @@ function AppContent() {
 
     // #admin/login 경로
     if (hash === 'admin/login') {
+      console.log('✅ Setting route to admin-login');
       setCurrentRoute('admin-login');
       return;
     }
@@ -105,8 +111,10 @@ function AppContent() {
     // #admin 경로 (센터/에이전시/가맹점 관리)
     if (hash.startsWith('admin')) {
       if (user && ['center', 'agency', 'store', 'admin'].includes(user.role)) {
+        console.log('✅ Setting route to admin');
         setCurrentRoute('admin');
       } else {
+        console.log('❌ Not admin role, showing login');
         setCurrentRoute('admin-login');
       }
       return;
@@ -118,12 +126,14 @@ function AppContent() {
     
     if (!user) {
       // 로그인 안됨 → 회원 앱 (공개)
+      console.log('👤 No user, showing user app');
       setCurrentRoute('user');
       return;
     }
 
     // Master
     if (user.role === 'master') {
+      console.log('👑 Master user, redirecting to #master');
       window.location.hash = '#master';
       setCurrentRoute('master');
       return;
@@ -131,6 +141,7 @@ function AppContent() {
 
     // 센터/에이전시/가맹점/admin
     if (['center', 'agency', 'store', 'admin'].includes(user.role)) {
+      console.log('🔑 Admin user, redirecting to #admin');
       window.location.hash = '#admin';
       setCurrentRoute('admin');
       return;
@@ -138,11 +149,13 @@ function AppContent() {
 
     // 일반 회원
     if (user.role === 'user') {
+      console.log('👤 Regular user, showing user app');
       setCurrentRoute('user');
       return;
     }
 
     // 기타
+    console.log('❓ Unknown role, showing not found');
     setCurrentRoute('not-found');
   }, [user, isLoading]);
 
