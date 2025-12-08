@@ -1,4 +1,4 @@
-import { ChevronRight, User, LogOut, CheckCircle, Crown, Bell, BellOff, MessageCircle, Lock } from 'lucide-react';
+import { ChevronRight, User, LogOut, CheckCircle, Crown, Bell, BellOff, MessageCircle, Lock, X } from 'lucide-react';
 import { Screen } from '../App';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner@2.0.3';
