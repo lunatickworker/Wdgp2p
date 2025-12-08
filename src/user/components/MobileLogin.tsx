@@ -3,7 +3,6 @@ import { Activity, Mail, Lock, LogIn, Eye, EyeOff, Sparkles, X, Users } from 'lu
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { supabase } from '../../utils/supabase/client';
-import { checkEmailAvailability } from '../../utils/api/check-email';
 
 export function MobileLogin() {
   const [email, setEmail] = useState('');
@@ -194,11 +193,13 @@ export function MobileLogin() {
       setIsLoading(true);
 
       // 이메일 중복 체크
-      const isEmailAvailable = await checkEmailAvailability(signUpData.email);
-      console.log('✅ 이메일 사용 가능 여부:', isEmailAvailable);
-      
-      if (!isEmailAvailable) {
-        console.log('❌ 이메일 중복 - 회원가입 중단');
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('email')
+        .eq('email', signUpData.email)
+        .single();
+
+      if (existingUser) {
         setSignUpErrors({ ...errors, email: '이미 사용 중인 이메일입니다' });
         toast.error('이미 사용 중인 이메일입니다', {
           duration: 3000,
@@ -207,8 +208,6 @@ export function MobileLogin() {
         });
         return;
       }
-      
-      console.log('✅ 이메일 사용 가능 - 회원가입 진행');
 
       // 추천인 코드 검증 (선택사항)
       let parentUserId = null;
@@ -254,6 +253,14 @@ export function MobileLogin() {
       });
 
       if (authError) {
+        // 상세 오류 로깅
+        console.error('Auth Error Details:', {
+          message: authError.message,
+          status: authError.status,
+          name: authError.name,
+          code: (authError as any).code
+        });
+        
         // Auth 오류 메시지 변환
         let errorMessage = authError.message || '회원가입 중 오류가 발생했습니다';
         
@@ -374,14 +381,12 @@ export function MobileLogin() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email Input */}
             <div className="space-y-1.5">
-              <label htmlFor="login-email" className="block text-slate-300 text-xs pl-0.5">이메일</label>
+              <label className="block text-slate-300 text-xs pl-0.5">이메일</label>
               <div className="relative">
                 <Mail className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 z-10 transition-colors ${
                   emailError ? 'text-red-400' : 'text-slate-500'
                 }`} />
                 <input
-                  id="login-email"
-                  name="email"
                   type="email"
                   value={email}
                   onChange={(e) => {
@@ -401,14 +406,12 @@ export function MobileLogin() {
 
             {/* Password Input */}
             <div className="space-y-1.5">
-              <label htmlFor="login-password" className="block text-slate-300 text-xs pl-0.5">비밀번호</label>
+              <label className="block text-slate-300 text-xs pl-0.5">비밀번호</label>
               <div className="relative">
                 <Lock className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 z-10 transition-colors ${
                   passwordError ? 'text-red-400' : 'text-slate-500'
                 }`} />
                 <input
-                  id="login-password"
-                  name="password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => {
