@@ -7,7 +7,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   // Center Admin 메뉴 (센터 관리자)
   const centerMenuItems = [
@@ -63,11 +63,6 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
     menuItems = masterMenuItems;
   }
 
-  const handleLogout = async () => {
-    await logout();
-    window.location.hash = '#admin/login';
-  };
-
   return (
     <aside className="w-64 bg-slate-900/50 backdrop-blur-xl border-r border-cyan-500/20">
       <div className="p-6">
@@ -111,14 +106,6 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
             );
           })}
         </nav>
-
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 text-slate-400 hover:bg-slate-800/50 hover:text-cyan-300 border border-transparent"
-        >
-          <Users className="w-5 h-5" />
-          <span>로그아웃</span>
-        </button>
       </div>
     </aside>
   );
