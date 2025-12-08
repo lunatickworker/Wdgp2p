@@ -65,10 +65,12 @@ export function Login({ onLoginSuccess }: LoginProps) {
         <div className="bg-slate-900/50 backdrop-blur-xl border border-cyan-500/20 rounded-2xl p-8 shadow-2xl">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-slate-300 mb-2">이메일</label>
+              <label htmlFor="email" className="block text-slate-300 mb-2">이메일</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
+                  id="email"
+                  name="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -80,10 +82,12 @@ export function Login({ onLoginSuccess }: LoginProps) {
             </div>
 
             <div>
-              <label className="block text-slate-300 mb-2">비밀번호</label>
+              <label htmlFor="password" className="block text-slate-300 mb-2">비밀번호</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <input
+                  id="password"
+                  name="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

@@ -374,12 +374,14 @@ export function MobileLogin() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email Input */}
             <div className="space-y-1.5">
-              <label className="block text-slate-300 text-xs pl-0.5">이메일</label>
+              <label htmlFor="login-email" className="block text-slate-300 text-xs pl-0.5">이메일</label>
               <div className="relative">
                 <Mail className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 z-10 transition-colors ${
                   emailError ? 'text-red-400' : 'text-slate-500'
                 }`} />
                 <input
+                  id="login-email"
+                  name="email"
                   type="email"
                   value={email}
                   onChange={(e) => {
@@ -399,12 +401,14 @@ export function MobileLogin() {
 
             {/* Password Input */}
             <div className="space-y-1.5">
-              <label className="block text-slate-300 text-xs pl-0.5">비밀번호</label>
+              <label htmlFor="login-password" className="block text-slate-300 text-xs pl-0.5">비밀번호</label>
               <div className="relative">
                 <Lock className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 z-10 transition-colors ${
                   passwordError ? 'text-red-400' : 'text-slate-500'
                 }`} />
                 <input
+                  id="login-password"
+                  name="password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => {
