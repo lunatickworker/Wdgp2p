@@ -10,9 +10,24 @@ import { CoinManagement } from "./master/CoinManagement";
 import { GasPolicyManagement } from "./master/GasPolicyManagement";
 import { SecurityMonitor } from "./master/SecurityMonitor";
 import { Header } from "./Header";
+import { supabase } from "../utils/supabase/client";
+import { toast } from "sonner@2.0.3";
 
 export function MasterApp() {
   const [activeTab, setActiveTab] = useState<string>("dashboard");
+
+  const handleLogoClick = async () => {
+    try {
+      // 로그아웃 처리
+      await supabase.auth.signOut();
+      
+      // 사용자 로그인 페이지로 이동
+      window.location.href = '/';
+    } catch (error) {
+      console.error('로그아웃 오류:', error);
+      toast.error('로그아웃에 실패했습니다');
+    }
+  };
 
   const menuItems = [
     { id: "dashboard", label: "대시보드", icon: TrendingUp },
@@ -38,7 +53,10 @@ export function MasterApp() {
         {/* Sidebar */}
         <aside className="w-64 bg-slate-900/50 backdrop-blur-xl border-r border-cyan-500/20">
           <div className="p-6">
-            <div className="flex items-center gap-3 mb-8">
+            <div 
+              className="flex items-center gap-3 mb-8 cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={handleLogoClick}
+            >
               <div 
                 className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center"
                 style={{ boxShadow: '0 0 20px rgba(6, 182, 212, 0.6)' }}

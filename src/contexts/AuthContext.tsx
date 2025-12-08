@@ -52,10 +52,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const savedUser = localStorage.getItem('user');
       if (savedUser) {
         try {
-          setUser(JSON.parse(savedUser));
+          const parsedUser = JSON.parse(savedUser);
+          
+          // localStorage의 사용자 정보로 DB에서 최신 상태 확인
+          const { data: dbUser, error: dbError } = await supabase
+            .from('users')
+            .select('user_id, email, username, role, level, template_id, center_name, logo_url, status, is_active')
+            .eq('user_id', parsedUser.id)
+            .maybeSingle();
+          
+          if (dbUser) {
+            // is_active 체크는 일반 회원만 (관리자는 체크 안 함)
+            if (dbUser.role === 'user' && !dbUser.is_active) {
+              // 승인이 취소된 경우 로그아웃
+              localStorage.removeItem('user');
+              await supabase.auth.signOut();
+              setIsLoading(false);
+              return;
+            }
+            
+            // 최신 정보로 업데이트
+            const updatedUser: User = {
+              id: dbUser.user_id,
+              email: dbUser.email,
+              username: dbUser.username,
+              role: dbUser.role || 'user',
+              level: dbUser.level,
+              templateId: dbUser.template_id,
+              centerName: dbUser.center_name,
+              logoUrl: dbUser.logo_url,
+            };
+            
+            setUser(updatedUser);
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+          } else {
+            // DB에 사용자가 없으면 로그아웃
+            localStorage.removeItem('user');
+            await supabase.auth.signOut();
+          }
+          
           setIsLoading(false);
         } catch (error) {
           localStorage.removeItem('user');
+          setIsLoading(false);
         }
       } else {
         setIsLoading(false);
@@ -76,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // 1. user_id로 먼저 확인 (Auth ID와 DB ID가 동일해야 함)
       let { data: existingUser, error: fetchError } = await supabase
         .from('users')
-        .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
+        .select('user_id, email, username, role, level, template_id, center_name, logo_url, status, is_active')
         .eq('user_id', authUser.id)
         .maybeSingle();
 
@@ -84,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!existingUser && !fetchError) {
         const result = await supabase
           .from('users')
-          .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
+          .select('user_id, email, username, role, level, template_id, center_name, logo_url, status, is_active')
           .eq('email', authUser.email)
           .maybeSingle();
         
@@ -100,6 +139,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (existingUser) {
         if (existingUser.status !== 'active') {
           throw new Error('비활성화된 계정입니다. 관리자에게 문의하세요.');
+        }
+
+        // is_active 체크는 일반 회원만 (관리자는 체크 안 함)
+        if (existingUser.role === 'user' && !existingUser.is_active) {
+          await supabase.auth.signOut();
+          throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요.');
         }
 
         const loggedInUser: User = {
@@ -159,7 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         username: authUser.user_metadata?.full_name || authUser.email.split('@')[0],
         role: 'user',
         status: 'active',
-        is_active: true,
+        is_active: false, // 일반 회원은 관리자 승인 필요
         referral_code: authUser.email.split('@')[0],
         created_at: new Date().toISOString(),
       };
@@ -263,7 +308,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (response.ok) {
           const { user: userData } = await response.json();
 
-          if (userData.status === 'pending') {
+          // is_active 체크는 일반 회원만 (관리자는 체크 안 함)
+          if (userData.role === 'user' && !userData.is_active) {
             throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
           }
 
@@ -303,12 +349,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (authData.user && !authError) {
           const { data: userData } = await supabase
             .from('users')
-            .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
+            .select('user_id, email, username, role, level, template_id, center_name, logo_url, status, is_active')
             .eq('user_id', authData.user.id)
             .maybeSingle();
 
           if (userData) {
-            if (userData.status === 'pending') {
+            // is_active 체크는 일반 회원만 (관리자는 체크 안 함)
+            if (userData.role === 'user' && !userData.is_active) {
               await supabase.auth.signOut();
               throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
             }
@@ -348,7 +395,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const performDBPasswordLogin = async (email: string, password: string, isAdminPage: boolean): Promise<User> => {
     const { data: userData, error: userError } = await supabase
       .from('users')
-      .select('user_id, email, username, role, level, template_id, center_name, logo_url, password_hash, status')
+      .select('user_id, email, username, role, level, template_id, center_name, logo_url, password_hash, status, is_active')
       .eq('email', email)
       .maybeSingle();
     
@@ -356,7 +403,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
     }
     
-    if (userData.status === 'pending') {
+    // is_active 체크는 일반 회원만 (관리자는 체크 안 함)
+    if (userData.role === 'user' && !userData.is_active) {
       throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
     }
     

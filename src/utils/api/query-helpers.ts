@@ -72,7 +72,7 @@ export async function getHierarchyUserIds(userId: string, role: string): Promise
   }
   
   if (role === 'center') {
-    // Center: 자신 + 자신이 생성한 store + 그 하위 user
+    // Center: 자신 + 자신이 생성한 store + 그 하위 user + 자신이 직접 생성한 user
     const storeIds: string[] = [];
     const userIds: string[] = [userId];
     
@@ -99,6 +99,17 @@ export async function getHierarchyUserIds(userId: string, role: string): Promise
       if (users) {
         userIds.push(...users.map(u => u.user_id));
       }
+    }
+    
+    // 3. 자신이 직접 생성한 user들 (추가!)
+    const { data: directUsers } = await supabase
+      .from('users')
+      .select('user_id')
+      .eq('parent_user_id', userId)
+      .eq('role', 'user');
+    
+    if (directUsers) {
+      userIds.push(...directUsers.map(u => u.user_id));
     }
     
     return userIds;

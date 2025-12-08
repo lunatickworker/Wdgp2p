@@ -216,36 +216,35 @@ export function MobileLogin() {
       
       console.log('✅ 이메일 사용 가능 - 회원가입 진행');
 
-      // 추천인 코드 검증 (선택사항)
+      // 추천인 코드 검증 (필수)
       let parentUserId = null;
       let tenantId = null;
       
-      if (signUpData.referralCode) {
-        const { data: referrer, error: referralError } = await supabase
-          .from('users')
-          .select('user_id, role, tenant_id, center_name, username, email')
-          .eq('referral_code', signUpData.referralCode.toLowerCase())
-          .in('role', ['center', 'store'])
-          .single();
+      const { data: referrer, error: referralError } = await supabase
+        .from('users')
+        .select('user_id, role, tenant_id, center_name, username, email')
+        .eq('referral_code', signUpData.referralCode.toLowerCase())
+        .in('role', ['center', 'store'])
+        .single();
 
-        if (referralError || !referrer) {
-          setSignUpErrors({ ...errors, referralCode: '유효하지 않은 추천인 코드입니다' });
-          toast.error('유효하지 않은 추천인 코드입니다', {
-            duration: 3000,
-            position: 'top-center',
-            icon: '⚠️'
-          });
-          return;
-        }
-
-        parentUserId = referrer.user_id;
-        tenantId = referrer.tenant_id || referrer.user_id;  // tenant_id가 없으면 본인 ID 사용
-        
-        toast.success(`${referrer.center_name || referrer.username}님의 추천으로 가입합니다 🎉`, {
+      if (referralError || !referrer) {
+        setSignUpErrors({ ...errors, referralCode: '유효하지 않은 추천인 코드입니다' });
+        toast.error('유효하지 않은 추천인 코드입니다', {
           duration: 3000,
           position: 'top-center',
+          icon: '⚠️'
         });
+        setIsLoading(false);
+        return;
       }
+
+      parentUserId = referrer.user_id;
+      tenantId = referrer.tenant_id || referrer.user_id;  // tenant_id가 없으면 본인 ID 사용
+      
+      toast.success(`${referrer.center_name || referrer.username}님의 추천으로 가입합니다 🎉`, {
+        duration: 3000,
+        position: 'top-center',
+      });
 
       // 1. Supabase Auth에 계정 생성
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -259,59 +258,38 @@ export function MobileLogin() {
         }
       });
 
+      // Auth 실패해도 계속 진행 (DB 로그인 가능하도록)
+      const userId = authData?.user?.id || crypto.randomUUID();
+      
       if (authError) {
-        // Auth 오류 메시지 변환
-        let errorMessage = authError.message || '회원가입 중 오류가 발생했습니다';
-        
-        // 구체적인 오류 메시지 파싱
-        if ((authError as any).code === 'over_email_send_rate_limit' || authError.message.includes('email rate limit')) {
-          errorMessage = '이메일 전송 한도가 초과되었습니다. 잠시 후 다시 시도해주세요';
-          toast.error(errorMessage, {
-            duration: 5000,
-            position: 'top-center',
-            icon: '⏳'
-          });
-          return;
-        } else if (authError.message.includes('already registered') || authError.message.includes('User already registered')) {
-          errorMessage = '이미 등록된 이메일입니다';
-          setSignUpErrors({ ...errors, email: errorMessage });
-        } else if (authError.message.includes('password') && !authError.message.includes('rate limit')) {
-          errorMessage = '비밀번호 형식이 올바르지 않습니다';
-          setSignUpErrors({ ...errors, password: errorMessage });
-        } else if (authError.message.includes('email') && !authError.message.includes('rate limit')) {
-          errorMessage = '이메일 형식이 올바르지 않습니다';
-          setSignUpErrors({ ...errors, email: errorMessage });
-        } else if (authError.message.includes('Signup requires a valid password')) {
-          errorMessage = '유효한 비밀번호를 입력해주세요 (8자 이상)';
-          setSignUpErrors({ ...errors, password: errorMessage });
-        }
-        
-        throw new Error(errorMessage);
+        console.log('⚠️ Auth 생성 실패 - DB 전용 계정으로 생성:', authError.message);
       }
 
-      if (!authData.user) {
-        throw new Error('사용자 생성에 실패했습니다');
-      }
+      // 2. password를 bcrypt hash로 변환 (DB 로그인용)
+      const bcrypt = (await import('bcryptjs')).default;
+      const passwordHash = await bcrypt.hash(signUpData.password, 10);
 
-      // 2. users 테이블에 사용자 정보 저장
-      // 일반 회원의 referral_code는 소속 가맹점 코드 (입력한 추천인 코드)
-      const referralCode = signUpData.referralCode ? signUpData.referralCode.toLowerCase() : null;
+      // 3. users 테이블에 사용자 정보 저장 (UPSERT)
+      // 일반 회원의 referral_code는 본인의 고유 코드 (이메일 @ 앞부분)
+      const referralCode = signUpData.email.split('@')[0].toLowerCase();
       
       const { error: dbError } = await supabase
         .from('users')
-        .insert({
-          user_id: authData.user.id, // Auth에서 생성된 UUID 사용
+        .upsert({
+          user_id: userId, // Auth에서 생성된 UUID 또는 새로 생성한 UUID
           email: signUpData.email,
           username: signUpData.username,
-          // password_hash는 Auth가 관리하므로 저장하지 않음
-          referral_code: referralCode,  // 소속 가맹점 코드 (추천인 코드)
+          password_hash: passwordHash,  // DB 로그인을 위해 저장
+          referral_code: referralCode,  // 본인의 고유 초대 코드 (이메일 @ 앞부분)
           role: 'user',
           level: 'Basic',
-          parent_user_id: parentUserId,  // 추천인 UUID
+          parent_user_id: parentUserId,  // 추천인 UUID (나를 초대한 사람)
           tenant_id: tenantId,            // 소속 센터 UUID
-          status: 'pending',              // 승인대기 상태
-          is_active: false,               // 비활성화
+          status: 'active',               // status는 active/suspended/blocked만 허용
+          is_active: false,               // 승인 대기 (관리자 활성화 필요)
           kyc_status: 'pending',
+        }, {
+          onConflict: 'user_id'  // user_id 충돌 시 업데이트
         });
 
       if (dbError) {

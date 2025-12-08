@@ -19,6 +19,8 @@ interface CoinData {
   is_active: boolean;
   icon_url?: string | null;
   created_at: string;
+  price_usd: number | null;
+  price_krw: number | null;
 }
 
 export function CoinManagement() {
@@ -71,7 +73,7 @@ export function CoinManagement() {
   const fetchCoins = async () => {
     const { data, error } = await supabase
       .from('supported_tokens')
-      .select('*')
+      .select('*, price_usd, price_krw')
       .order('created_at', { ascending: false });
 
     if (!error && data) {
@@ -469,6 +471,12 @@ export function CoinManagement() {
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-lg bg-slate-800/30 border border-slate-700/50">
                   <div>
+                    <p className="text-slate-500 text-xs mb-1">가격 (KRW)</p>
+                    <p className="text-cyan-400">
+                      {coin.price_krw ? `₩${Number(coin.price_krw).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}` : '-'}
+                    </p>
+                  </div>
+                  <div>
                     <p className="text-slate-500 text-xs mb-1">최소 입금</p>
                     <p className="text-white text-sm">{coin.min_deposit} {coin.symbol}</p>
                   </div>
@@ -479,10 +487,6 @@ export function CoinManagement() {
                   <div>
                     <p className="text-slate-500 text-xs mb-1">출금 수수료</p>
                     <p className="text-white text-sm">{coin.withdrawal_fee} {coin.symbol}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500 text-xs mb-1">등록일</p>
-                    <p className="text-white text-sm">{new Date(coin.created_at).toLocaleDateString('ko-KR')}</p>
                   </div>
                 </div>
 

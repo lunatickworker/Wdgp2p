@@ -146,9 +146,10 @@ export function Header({ onNavigate }: HeaderProps) {
         // 회원가입 알림 (승인대기 상태만, 하위만)
         const { count: signupCount } = await supabase
           .from('users')
-          .select('*', { count: 'exact', head: true })
+          .select('user_id', { count: 'exact', head: true })
           .in('user_id', hierarchyUserIds)
-          .eq('status', 'pending');
+          .eq('is_active', false)
+          .eq('role', 'user'); // role='user'만 카운트
         
         setSignupNotifications(signupCount || 0);
 

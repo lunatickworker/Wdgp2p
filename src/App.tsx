@@ -6,6 +6,7 @@ import { AdminApp } from './components/AdminApp';
 import { MasterApp } from './components/MasterApp';
 import { Login } from './components/Login';
 import { getTenantInfo, getDomainType, isRoleAllowedForDomain, redirectToCorrectDomain } from './utils/domain';
+import { startPriceUpdateService } from './utils/priceUpdater';
 import './utils/debug-users';
 import './utils/fix-template-id'; // ✅ 템플릿 ID 수동 수정 유틸리티 로드
 
@@ -245,6 +246,16 @@ function AppContent() {
 }
 
 function App() {
+  // 🚀 가격 업데이트 서비스 시작 (10분마다)
+  useEffect(() => {
+    console.log('🚀 Initializing price update service...');
+    const stopService = startPriceUpdateService(10); // 10분마다 업데이트
+
+    return () => {
+      stopService(); // 컴포넌트 언마운트 시 정지
+    };
+  }, []);
+
   return (
     <AuthProvider>
       <AppContent />

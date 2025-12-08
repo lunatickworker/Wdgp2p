@@ -261,7 +261,7 @@ app.post("/make-server-b6d5667f/api/auth/login", async (c) => {
       return c.json({ error: '이메일 또는 비밀번호가 올바르지 않습니다' }, 401);
     }
 
-    // 비밀번호 확인 (bcrypt 해시 비교 또는 평문 비교)
+    // 비밀번호 확인 (bcrypt ��시 비교 또는 평문 비교)
     if (!userData.password_hash) {
       return c.json({ error: '이메일 또는 비밀번호가 올바르지 않습니다' }, 401);
     }
@@ -390,10 +390,14 @@ app.get("/make-server-b6d5667f/api/admin/users", async (c) => {
 
     console.log('👤 Current user:', currentUser);
 
-    // 역할별 필터링 로직
+    // 역할별 필터링 로직 (account_verifications와 조인)
     let query = supabase
       .from('users')
-      .select('user_id, email, username, role, level, status, is_active, kyc_status, parent_user_id, referral_code, created_at, phone')
+      .select(`
+        user_id, email, username, role, level, status, is_active, kyc_status, 
+        parent_user_id, referral_code, created_at, last_login, phone,
+        account_verifications(status)
+      `)
       .order('created_at', { ascending: false });
 
     if (currentUser.role === 'master') {

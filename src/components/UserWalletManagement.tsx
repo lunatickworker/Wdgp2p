@@ -10,8 +10,9 @@ interface UserData {
   user_id: string;
   username: string;
   email: string;
-  account_verification_status: string;
+  account_verifications?: Array<{ status: string }>;  // 조인된 데이터
   status: string;
+  is_active: boolean;  // 승인 여부
   created_at: string;
   last_login: string;
   role?: string;
@@ -34,9 +35,9 @@ interface CoinData {
 
 interface Stats {
   totalUsers: number;
-  verifiedUsers: number;
-  totalWallets: number;
-  totalValue: number;
+  pendingApproval: number; // 승인 대기
+  totalCoins: number;      // 총 코인 개수 (balance 합)
+  totalValue: number;      // 원화 환산 가치
 }
 
 export function UserWalletManagement() {
@@ -50,8 +51,8 @@ export function UserWalletManagement() {
   const [activeTab, setActiveTab] = useState<"info" | "wallets">("info");
   const [stats, setStats] = useState<Stats>({
     totalUsers: 0,
-    verifiedUsers: 0,
-    totalWallets: 0,
+    pendingApproval: 0,
+    totalCoins: 0,
     totalValue: 0
   });
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
@@ -215,7 +216,9 @@ export function UserWalletManagement() {
       // 통계 계산 - role='user'인 일반 사용자만 카운트 (관리자 제외)
       const regularUsers = usersData.filter((u: any) => u.role === 'user');
       const totalUsers = regularUsers.length;
-      const verifiedUsers = regularUsers.filter((u: any) => u.account_verification_status === 'verified').length;
+      
+      // 승인 대기 사용자 (is_active가 false)
+      const pendingApproval = regularUsers.filter((u: any) => u.is_active === false).length;
       
       // 사용자들의 user_id 배열
       const userIds = usersData.map((u: any) => u.user_id);
@@ -223,27 +226,46 @@ export function UserWalletManagement() {
       if (userIds.length === 0) {
         setStats({
           totalUsers: 0,
-          verifiedUsers: 0,
-          totalWallets: 0,
+          pendingApproval: 0,
+          totalCoins: 0,
           totalValue: 0
         });
         return;
       }
       
-      // 지갑 데이터 가져오기 (배치 최적화)
+      // 지갑 데이터 가져오기 (coin_type과 balance)
       const { data: walletsData } = await supabase
         .from('wallets')
-        .select('balance, user_id')
+        .select('balance, coin_type')
         .in('user_id', userIds);
       
-      const totalWallets = walletsData?.length || 0;
-      const totalValue = walletsData?.reduce((sum, w) => sum + (w.balance || 0), 0) || 0;
+      // 총 코인 개수 (모든 balance 합산)
+      const totalCoins = walletsData?.reduce((sum, w) => sum + (parseFloat(w.balance) || 0), 0) || 0;
+      
+      // 원화 환산 가치 계산을 위해 coins 테이블에서 시세 가져오기
+      const { data: coinsData } = await supabase
+        .from('coins')
+        .select('symbol, krw_price');
+      
+      // 코인별 시세 맵 생성
+      const coinPriceMap = new Map<string, number>();
+      coinsData?.forEach((coin) => {
+        coinPriceMap.set(coin.symbol, parseFloat(coin.krw_price) || 0);
+      });
+      
+      // 총 자산 가치 계산 (코인 개수 × 원화 시세)
+      let totalValue = 0;
+      walletsData?.forEach((wallet) => {
+        const balance = parseFloat(wallet.balance) || 0;
+        const price = coinPriceMap.get(wallet.coin_type) || 0;
+        totalValue += balance * price;
+      });
 
       setStats({
         totalUsers,
-        verifiedUsers,
-        totalWallets,
-        totalValue
+        pendingApproval,
+        totalCoins: Math.round(totalCoins * 100) / 100, // 소수점 2자리
+        totalValue: Math.round(totalValue)
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -747,8 +769,13 @@ export function UserWalletManagement() {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, itemsPerPage]);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
+  const getStatusColor = (user: UserData) => {
+    // is_active가 false면 승인 대기
+    if (!user.is_active) {
+      return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/50';
+    }
+    
+    switch (user.status) {
       case 'active': return 'text-green-400 bg-green-500/20 border-green-500/50';
       case 'suspended': return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/50';
       case 'blocked': return 'text-red-400 bg-red-500/20 border-red-500/50';
@@ -756,16 +783,23 @@ export function UserWalletManagement() {
     }
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
+  const getStatusText = (user: UserData) => {
+    // is_active가 false면 승인 대기
+    if (!user.is_active) {
+      return '승인대기';
+    }
+    
+    switch (user.status) {
       case 'active': return '활성';
       case 'suspended': return '정지';
       case 'blocked': return '차단';
-      default: return status;
+      default: return user.status;
     }
   };
 
-  const getVerificationColor = (status: string) => {
+  const getVerificationColor = (status?: string) => {
+    if (!status) return 'text-slate-400 bg-slate-500/20';
+    
     switch (status) {
       case 'verified': return 'text-green-400 bg-green-500/20';
       case 'pending': return 'text-yellow-400 bg-yellow-500/20';
@@ -774,7 +808,9 @@ export function UserWalletManagement() {
     }
   };
 
-  const getVerificationText = (status: string) => {
+  const getVerificationText = (status?: string) => {
+    if (!status) return '-';
+    
     switch (status) {
       case 'verified': return '인증';
       case 'pending': return '대기';
@@ -797,18 +833,18 @@ export function UserWalletManagement() {
         </div>
 
         <div className="relative group">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500 to-red-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
           <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
-            <p className="text-slate-400 text-sm mb-1">인증 완료</p>
-            <p className="text-green-400 text-2xl">{stats.verifiedUsers.toLocaleString()}</p>
+            <p className="text-slate-400 text-sm mb-1">승인 대기</p>
+            <p className="text-orange-400 text-2xl">{stats.pendingApproval.toLocaleString()}</p>
           </div>
         </div>
 
         <div className="relative group">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
           <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
-            <p className="text-slate-400 text-sm mb-1">총 지갑</p>
-            <p className="text-purple-400 text-2xl">{stats.totalWallets.toLocaleString()}</p>
+            <p className="text-slate-400 text-sm mb-1">총 코인 개수</p>
+            <p className="text-purple-400 text-2xl">{stats.totalCoins.toLocaleString()}</p>
           </div>
         </div>
 
@@ -902,11 +938,11 @@ export function UserWalletManagement() {
                           <p className="text-slate-500 text-xs truncate">{user.email}</p>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <span className={`px-1.5 py-0.5 rounded text-xs border ${getStatusColor(user.status)}`}>
-                            {getStatusText(user.status)}
+                          <span className={`px-1.5 py-0.5 rounded text-xs border ${getStatusColor(user)}`}>
+                            {getStatusText(user)}
                           </span>
-                          <span className={`px-1.5 py-0.5 rounded text-xs ${getVerificationColor(user.account_verification_status)}`}>
-                            {getVerificationText(user.account_verification_status)}
+                          <span className={`px-1.5 py-0.5 rounded text-xs ${getVerificationColor(user.account_verifications?.[0]?.status)}`}>
+                            {getVerificationText(user.account_verifications?.[0]?.status)}
                           </span>
                         </div>
                       </div>
@@ -1069,15 +1105,40 @@ export function UserWalletManagement() {
                         </div>
                         <div>
                           <p className="text-slate-400 text-sm mb-1">계좌증 상태</p>
-                          <span className={`inline-block px-3 py-1 rounded text-sm ${getVerificationColor(selectedUser.account_verification_status)}`}>
-                            {getVerificationText(selectedUser.account_verification_status)}
+                          <span className={`inline-block px-3 py-1 rounded text-sm ${getVerificationColor(selectedUser.account_verifications?.[0]?.status)}`}>
+                            {getVerificationText(selectedUser.account_verifications?.[0]?.status)}
                           </span>
                         </div>
                         <div>
                           <p className="text-slate-400 text-sm mb-1">계정 상태</p>
-                          <span className={`inline-block px-3 py-1 rounded text-sm border ${getStatusColor(selectedUser.status)}`}>
-                            {getStatusText(selectedUser.status)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-block px-3 py-1 rounded text-sm border ${getStatusColor(selectedUser)}`}>
+                              {getStatusText(selectedUser)}
+                            </span>
+                            {!selectedUser.is_active && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const { error } = await supabase
+                                      .from('users')
+                                      .update({ is_active: true })
+                                      .eq('user_id', selectedUser.user_id);
+                                    
+                                    if (error) throw error;
+                                    
+                                    toast.success('사용자가 승인되었습니다');
+                                    setSelectedUser({ ...selectedUser, is_active: true });
+                                    await fetchData();
+                                  } catch (error) {
+                                    toast.error('승인 처리 실패');
+                                  }
+                                }}
+                                className="px-3 py-1 bg-green-500/20 text-green-400 rounded text-sm hover:bg-green-500/30 transition-all border border-green-500/50"
+                              >
+                                승인하기
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <div>
                           <p className="text-slate-400 text-sm mb-1">가입일</p>

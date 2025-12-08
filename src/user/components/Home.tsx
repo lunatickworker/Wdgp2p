@@ -69,13 +69,13 @@ export function Home({ wallets, transactions, onNavigate, onSelectCoin }: HomePr
     const fetchPrices = async () => {
       const { data } = await supabase
         .from('supported_tokens')
-        .select('symbol, price_usd');
+        .select('symbol, price_krw');
 
       if (data) {
         const priceMap: { [key: string]: number } = {};
         data.forEach((token: any) => {
-          // USD 가격을 원화로 변환 (1 USD = 1350 KRW 가정)
-          priceMap[token.symbol] = (token.price_usd || 0) * 1350;
+          // price_krw 직접 사용 (실시간 환율 반영)
+          priceMap[token.symbol] = token.price_krw || 0;
         });
         setPrices(priceMap);
       }

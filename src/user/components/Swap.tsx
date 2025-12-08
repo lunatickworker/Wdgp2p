@@ -138,12 +138,12 @@ export function Swap({ wallets, selectedCoin, onNavigate, onSelectCoin }: SwapPr
     const fetchPrices = async () => {
       const { data } = await supabase
         .from('supported_tokens')
-        .select('symbol, price_usd');
+        .select('symbol, price_krw');
 
       if (data) {
         const rates: Record<string, number> = {};
         data.forEach((coin: any) => {
-          rates[coin.symbol] = coin.price_usd || 1;
+          rates[coin.symbol] = coin.price_krw || 1;
         });
         setExchangeRates(rates);
       }

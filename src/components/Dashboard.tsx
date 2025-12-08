@@ -1,10 +1,11 @@
-import { TrendingUp, TrendingDown, Users, AlertTriangle, Wallet, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown, Users, AlertTriangle, Wallet, Activity, Coins } from "lucide-react";
 import { NeonCard } from "./NeonCard";
 import { StatCard } from "./StatCard";
 import { CryptoPriceTicker } from "./CryptoPriceTicker";
 import { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase/client";
 import { useAuth } from "../contexts/AuthContext";
+import { getUsdToKrwRate } from "../utils/exchangeRate";
 
 interface Transaction {
   id: string;
@@ -36,6 +37,8 @@ export function Dashboard() {
     coldWallet: 0,
     total: 0
   });
+  const [coinBalances, setCoinBalances] = useState<Array<{ symbol: string; balance: number; usdValue: number }>>([]);
+  const [totalAssetValue, setTotalAssetValue] = useState(0);
   const [loading, setLoading] = useState(false); // 즉시 UI 표시
   const [filteredUserIds, setFilteredUserIds] = useState<string[]>([]); // 필터링된 사용자 ID 목록
   const [coinIcons, setCoinIcons] = useState<Map<string, string>>(new Map());
@@ -99,7 +102,8 @@ export function Dashboard() {
         fetchUserStats(userIds),
         fetchTransactionStats(userIds),
         fetchRecentTransactions(userIds),
-        fetchWalletStatus(userIds)
+        fetchWalletStatus(userIds),
+        fetchCoinBalances(userIds)
       ]);
     } catch (error) {
       console.error('Dashboard data fetch error:', error);
@@ -371,6 +375,63 @@ export function Dashboard() {
     });
   };
 
+  const fetchCoinBalances = async (userIds: string[]) => {
+    if (userIds.length === 0) {
+      setCoinBalances([]);
+      setTotalAssetValue(0);
+      return;
+    }
+
+    // 1. 사용자의 코인 잔액 가져오기
+    const { data: balances } = await supabase
+      .from('wallets')
+      .select('balance, coin_type, user_id')
+      .in('user_id', userIds);
+
+    if (!balances) {
+      setCoinBalances([]);
+      setTotalAssetValue(0);
+      return;
+    }
+
+    // 2. 코인별 잔액 합산
+    const balanceMap = new Map<string, number>();
+    balances.forEach((balance: any) => {
+      const currentBalance = balanceMap.get(balance.coin_type) || 0;
+      balanceMap.set(balance.coin_type, currentBalance + Number(balance.balance));
+    });
+
+    // 3. 코인 가격 정보 가져오기 (supported_tokens 테이블에서 price_krw 직접 사용)
+    const { data: tokenPrices } = await supabase
+      .from('supported_tokens')
+      .select('symbol, price_krw');
+
+    const priceMap = new Map<string, number>();
+    
+    tokenPrices?.forEach((token: any) => {
+      priceMap.set(token.symbol, Number(token.price_krw || 0));
+    });
+
+    // 4. 코인별 잔액과 KRW 가치 계산
+    const coinBalancesArray: Array<{ symbol: string; balance: number; usdValue: number }> = [];
+    let totalValue = 0;
+
+    balanceMap.forEach((balance, coinType) => {
+      if (balance > 0) {
+        const priceKrw = priceMap.get(coinType) || 0;
+        const krwValue = balance * priceKrw;
+        coinBalancesArray.push({ symbol: coinType, balance, usdValue: krwValue }); // usdValue 필드명 유지 (KRW 값)
+        totalValue += krwValue;
+      }
+    });
+
+    // 5. KRW 가치 기준으로 내림차순 정렬
+    coinBalancesArray.sort((a, b) => b.usdValue - a.usdValue);
+
+    setCoinBalances(coinBalancesArray);
+    setTotalAssetValue(totalValue);
+  };
+
   const formatCurrency = (amount: number) => {
     // DB의 balance는 이미 원화 금액이므로 그대로 표시
     return `₩${amount.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}`;
@@ -576,6 +637,113 @@ export function Dashboard() {
               </div>
               <p className="text-slate-400 text-xs">모든 노드 정상 작동 중</p>
             </div>
+          </div>
+        </NeonCard>
+      </div>
+
+      {/* 코인 보유 현황 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <NeonCard>
+          <div className="flex items-center gap-2 mb-6">
+            <Coins className="w-5 h-5 text-cyan-400" />
+            <h3 className="text-slate-200">코인 보유 현황</h3>
+          </div>
+
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {coinBalances.length > 0 ? (
+              coinBalances.map((coin, index) => (
+                <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/30 border border-slate-700/50">
+                  <div className="flex items-center gap-3">
+                    {coinIcons.has(coin.symbol) ? (
+                      <img src={coinIcons.get(coin.symbol)} alt={coin.symbol} className="w-8 h-8 rounded-full" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-white text-xs">
+                        {coin.symbol.slice(0, 2)}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-slate-200 text-sm">{coin.symbol}</p>
+                      <p className="text-slate-500 text-xs">{formatAmount(coin.balance)}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-cyan-400 text-sm">{formatCurrency(coin.usdValue)}</p>
+                    <p className="text-slate-500 text-xs">
+                      {totalAssetValue > 0 ? ((coin.usdValue / totalAssetValue) * 100).toFixed(1) : 0}%
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-slate-400">
+                <Coins className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>코인 보유 내역이 없습니다</p>
+              </div>
+            )}
+          </div>
+
+          {coinBalances.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-700/50">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-sm">총 자산 가치 (KRW)</span>
+                <span className="text-cyan-400">{formatCurrency(totalAssetValue)}</span>
+              </div>
+            </div>
+          )}
+        </NeonCard>
+
+        {/* 자산 분포 차트 (상위 5개) */}
+        <NeonCard>
+          <div className="flex items-center gap-2 mb-6">
+            <TrendingUp className="w-5 h-5 text-cyan-400" />
+            <h3 className="text-slate-200">자산 분포 (Top 5)</h3>
+          </div>
+
+          <div className="space-y-4">
+            {coinBalances.slice(0, 5).map((coin, index) => {
+              const percentage = totalAssetValue > 0 ? (coin.usdValue / totalAssetValue) * 100 : 0;
+              const gradientColors = [
+                'from-cyan-500 to-blue-500',
+                'from-purple-500 to-pink-500',
+                'from-green-500 to-emerald-500',
+                'from-orange-500 to-red-500',
+                'from-amber-500 to-yellow-500'
+              ];
+              
+              return (
+                <div key={index}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      {coinIcons.has(coin.symbol) ? (
+                        <img src={coinIcons.get(coin.symbol)} alt={coin.symbol} className="w-6 h-6 rounded-full" />
+                      ) : (
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-white text-xs">
+                          {coin.symbol.slice(0, 2)}
+                        </div>
+                      )}
+                      <span className="text-slate-300 text-sm">{coin.symbol}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-slate-200 text-sm">{formatCurrency(coin.usdValue)}</span>
+                      <span className="text-slate-500 text-xs ml-2">({percentage.toFixed(1)}%)</span>
+                    </div>
+                  </div>
+                  <div className="relative h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className={`absolute inset-y-0 left-0 bg-gradient-to-r ${gradientColors[index % gradientColors.length]} rounded-full shadow-lg`}
+                      style={{ width: `${percentage}%` }}
+                    ></div>
+                  </div>
+                </div>
+              );
+            })}
+            
+            {coinBalances.length === 0 && (
+              <div className="text-center py-8 text-slate-400">
+                <TrendingUp className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>자산 분포 데이터가 없습니다</p>
+              </div>
+            )}
           </div>
         </NeonCard>
       </div>

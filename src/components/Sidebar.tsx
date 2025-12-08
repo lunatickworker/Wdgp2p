@@ -68,8 +68,14 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
       <div className="p-6">
         <button 
           onClick={() => {
-            window.location.hash = '#';
-            window.location.reload();
+            if (user?.role === 'master') {
+              // 마스터: 사용자 로그인 페이지로
+              window.location.hash = '#';
+              window.location.reload();
+            } else {
+              // 에이전시/센터/가맹점: 대시보드로
+              setActiveTab('dashboard');
+            }
           }}
           className="flex items-center gap-3 mb-8 group w-full hover:scale-105 transition-transform"
         >
