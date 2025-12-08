@@ -39,7 +39,7 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
   const storeMenuItems = [
     { id: "dashboard", label: "대시보드", icon: LayoutDashboard },
     { id: "users-wallets", label: "소속 회원", icon: Users },
-    { id: "swaps", label: "거래 내역", icon: TrendingUp },
+    { id: "deposit-withdrawal", label: "거래 내역", icon: TrendingUp },
   ];
 
   // Agency Admin 메뉴 (에이전시 관리자)

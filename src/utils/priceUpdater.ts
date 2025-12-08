@@ -20,6 +20,7 @@ const COIN_GECKO_IDS: { [key: string]: string } = {
   'BTC': 'bitcoin',
   'ETH': 'ethereum',
   'USDT': 'tether',
+  'USDT-TRC20': 'tether', // USDT-TRC20은 USDT와 동일 가격
   'USDC': 'usd-coin',
   'BNB': 'binancecoin',
   'XRP': 'ripple',
@@ -51,6 +52,12 @@ const COIN_GECKO_IDS: { [key: string]: string } = {
   'ARB': 'arbitrum',
   'OP': 'optimism',
   'KRWQ': 'tether' // KRWQ는 USDT와 동일하게 처리 (1:1 페깅)
+};
+
+// 커스텀 토큰 기본 가격 (USD)
+const CUSTOM_TOKEN_PRICES: { [key: string]: number } = {
+  'TOKEN': 1.0, // 테스트 토큰, $1로 고정
+  'KRWQ': 1.0,  // KRWQ 기본값 (CoinGecko에서 가져올 수 없는 경우)
 };
 
 /**
@@ -143,10 +150,16 @@ export async function updateAllCoinPrices(): Promise<{ success: boolean; updated
     const errors: string[] = [];
 
     for (const coin of coins) {
-      const priceUsd = priceMap.get(coin.symbol);
+      // CoinGecko에서 가격 찾기, 없으면 커스텀 가격 사용
+      let priceUsd = priceMap.get(coin.symbol);
+      
+      if (!priceUsd && CUSTOM_TOKEN_PRICES[coin.symbol]) {
+        priceUsd = CUSTOM_TOKEN_PRICES[coin.symbol];
+        console.log(`💡 Using custom price for ${coin.symbol}: $${priceUsd}`);
+      }
       
       if (!priceUsd) {
-        console.warn(`⚠️ No price found for ${coin.symbol}`);
+        console.warn(`⚠️ No price found for ${coin.symbol} (not in CoinGecko or custom prices)`);
         errors.push(`No price for ${coin.symbol}`);
         continue;
       }
@@ -198,7 +211,7 @@ export async function updateCoinPrice(symbol: string): Promise<{ success: boolea
     const exchangeRate = await getUsdToKrwRate();
     const priceMap = await fetchCoinPricesFromCoinGecko([symbol]);
     
-    const priceUsd = priceMap.get(symbol);
+    const priceUsd = priceMap.get(symbol) || CUSTOM_TOKEN_PRICES[symbol];
     if (!priceUsd) {
       return { success: false };
     }

@@ -40,6 +40,8 @@ interface Deposit {
   confirmed_at: string | null;
   username?: string;
   email?: string;
+  viewed_by_store?: boolean;
+  viewed_at?: string;
 }
 
 interface Withdrawal {
@@ -78,7 +80,11 @@ export function DepositWithdrawalManagement() {
   const [transferRequests, setTransferRequests] = useState<TransferRequest[]>([]);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
-  const [activeTab, setActiveTab] = useState<TabType>("transfer_requests");
+  
+  // 가맹점 계정은 기본 탭을 "deposits"로 설정
+  const initialTab = user?.role === 'store' ? 'deposits' : 'transfer_requests';
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
@@ -101,13 +107,24 @@ export function DepositWithdrawalManagement() {
       fetchData();
       fetchCoinIcons();
 
+      // 가맹점 계정이 입금 탭을 확인하면 localStorage 업데이트
+      if (user.role === 'store' && activeTab === 'deposits') {
+        const lastViewedKey = `store_last_viewed_deposits_${user.id}`;
+        localStorage.setItem(lastViewedKey, new Date().toISOString());
+        console.log('✅ 가맹점 입금 내역 확인 완료:', new Date().toISOString());
+      }
+
       // 실시간 업데이트
       const channel = supabase
         .channel('deposit-withdrawal-changes')
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'transfer_requests' },
-          () => fetchData()
+          () => {
+            if (user.role !== 'store') {
+              fetchData();
+            }
+          }
         )
         .on(
           'postgres_changes',
@@ -117,7 +134,11 @@ export function DepositWithdrawalManagement() {
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'withdrawals' },
-          () => fetchData()
+          () => {
+            if (user.role !== 'store') {
+              fetchData();
+            }
+          }
         )
         .subscribe();
 
@@ -125,7 +146,7 @@ export function DepositWithdrawalManagement() {
         supabase.removeChannel(channel);
       };
     }
-  }, [user]);
+  }, [user, activeTab]);
 
   const fetchData = async () => {
     if (!user || !user.role) return;
@@ -643,12 +664,31 @@ export function DepositWithdrawalManagement() {
   };
 
   // Transaction Receipt 조회
-  const handleViewReceipt = async (txHash: string, chainId: number = 8453) => {
+  const handleViewReceipt = async (txHash: string, chainId: number = 8453, depositId?: string) => {
     setIsLoadingReceipt(true);
     setShowReceiptModal(true);
     setCurrentReceipt({ txHash, status: 'pending' });
 
     try {
+      // 가맹점 계정이 입금 내역의 Receipt를 확인하면 viewed_by_store = true로 업데이트
+      if (user?.role === 'store' && depositId && activeTab === 'deposits') {
+        console.log('✅ 가맹점이 입금 Receipt 확인:', depositId);
+        
+        const { error: updateError } = await supabase
+          .from('deposits')
+          .update({ 
+            viewed_by_store: true,
+            viewed_at: new Date().toISOString()
+          })
+          .eq('deposit_id', depositId);
+
+        if (updateError) {
+          console.error('❌ viewed_by_store 업데이트 실패:', updateError);
+        } else {
+          console.log('✅ viewed_by_store 업데이트 성공');
+        }
+      }
+
       const backendUrl = 'https://mzoeeqmtvlnyonicycvg.supabase.co/functions/v1/make-server-b6d5667f';
       const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16b2VlcW10dmxueW9uaWN5Y3ZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5MjIyNzcsImV4cCI6MjA3ODQ5ODI3N30.oo7FsWjthtBtM-Xa1VFJieMGQ4mG__V8w7r9qGBPzaI';
 
@@ -678,7 +718,10 @@ export function DepositWithdrawalManagement() {
   const getFilteredData = () => {
     let data: any[] = [];
 
-    if (activeTab === "transfer_requests") {
+    // 가맹점 계정: 코인 구매 요청 탭에서도 입금 내역 표시
+    if (user?.role === 'store' && activeTab === "transfer_requests") {
+      data = deposits;  // 입금 내역을 표시
+    } else if (activeTab === "transfer_requests") {
       data = transferRequests;
     } else if (activeTab === "deposits") {
       data = deposits;
@@ -744,78 +787,112 @@ export function DepositWithdrawalManagement() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-cyan-400 mb-1">구매 요청 관리</h2>
-          <p className="text-slate-400 text-sm">사용자의 코인 구매 요청을 승인하고 입출금 내역을 확인합니다</p>
+          {user?.role === 'store' ? (
+            <>
+              <h2 className="text-cyan-400 mb-1">거래 내역</h2>
+              <p className="text-slate-400 text-sm">입금 및 출금 내역을 확인합니다</p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-cyan-400 mb-1">구매 요청 관리</h2>
+              <p className="text-slate-400 text-sm">사용자의 코인 구매 요청을 승인하고 입출금 내역을 확인합니다</p>
+            </>
+          )}
         </div>
       </div>
 
       {/* 통계 카드 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="relative group">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-amber-500 to-orange-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
-          <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
-            <p className="text-slate-400 text-sm mb-1">대기중 요청</p>
-            <p className="text-amber-400 text-2xl">{stats.pending}</p>
+      {user?.role === 'store' ? (
+        // 가맹점 계정: 총 입금, 총 출금 표시
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="relative group">
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+            <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
+              <p className="text-slate-400 text-sm mb-1">총 입금</p>
+              <p className="text-cyan-400 text-2xl">{stats.totalDeposits}</p>
+            </div>
           </div>
-        </div>
 
-        <div className="relative group">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
-          <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
-            <p className="text-slate-400 text-sm mb-1">승인됨</p>
-            <p className="text-green-400 text-2xl">{stats.approved}</p>
+          <div className="relative group">
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+            <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
+              <p className="text-slate-400 text-sm mb-1">총 출금</p>
+              <p className="text-purple-400 text-2xl">{stats.totalWithdrawals}</p>
+            </div>
           </div>
         </div>
+      ) : (
+        // 다른 계정: 전체 통계 표시
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="relative group">
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-amber-500 to-orange-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+            <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
+              <p className="text-slate-400 text-sm mb-1">대기중 요청</p>
+              <p className="text-amber-400 text-2xl">{stats.pending}</p>
+            </div>
+          </div>
 
-        <div className="relative group">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-red-500 to-pink-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
-          <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
-            <p className="text-slate-400 text-sm mb-1">거부됨</p>
-            <p className="text-red-400 text-2xl">{stats.rejected}</p>
+          <div className="relative group">
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+            <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
+              <p className="text-slate-400 text-sm mb-1">승인됨</p>
+              <p className="text-green-400 text-2xl">{stats.approved}</p>
+            </div>
           </div>
-        </div>
 
-        <div className="relative group">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
-          <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
-            <p className="text-slate-400 text-sm mb-1">총 입금</p>
-            <p className="text-cyan-400 text-2xl">{stats.totalDeposits}</p>
+          <div className="relative group">
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-red-500 to-pink-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+            <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
+              <p className="text-slate-400 text-sm mb-1">거부됨</p>
+              <p className="text-red-400 text-2xl">{stats.rejected}</p>
+            </div>
           </div>
-        </div>
 
-        <div className="relative group">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
-          <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
-            <p className="text-slate-400 text-sm mb-1">총 출금</p>
-            <p className="text-purple-400 text-2xl">{stats.totalWithdrawals}</p>
+          <div className="relative group">
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+            <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
+              <p className="text-slate-400 text-sm mb-1">총 입금</p>
+              <p className="text-cyan-400 text-2xl">{stats.totalDeposits}</p>
+            </div>
+          </div>
+
+          <div className="relative group">
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg opacity-20 group-hover:opacity-30 blur transition-opacity"></div>
+            <div className="relative bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 rounded-lg p-4">
+              <p className="text-slate-400 text-sm mb-1">총 출금</p>
+              <p className="text-purple-400 text-2xl">{stats.totalWithdrawals}</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* 탭 */}
       <div className="flex gap-2 border-b border-slate-700/50">
-        <button
-          onClick={() => {
-            setActiveTab("transfer_requests");
-            setCurrentPage(1);
-            setStatusFilter("all");
-          }}
-          className={`px-6 py-3 border-b-2 transition-colors ${
-            activeTab === "transfer_requests"
-              ? "border-cyan-500 text-cyan-400"
-              : "border-transparent text-slate-400 hover:text-slate-300"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5" />
-            <span>코인 구매 요청</span>
-            {stats.pending > 0 && (
-              <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded-full">
-                {stats.pending}
-              </span>
-            )}
-          </div>
-        </button>
+        {/* 가맹점 계정: 코인 구매 요청 탭 숨김 */}
+        {user?.role !== 'store' && (
+          <button
+            onClick={() => {
+              setActiveTab("transfer_requests");
+              setCurrentPage(1);
+              setStatusFilter("all");
+            }}
+            className={`px-6 py-3 border-b-2 transition-colors ${
+              activeTab === "transfer_requests"
+                ? "border-cyan-500 text-cyan-400"
+                : "border-transparent text-slate-400 hover:text-slate-300"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5" />
+              <span>코인 구매 요청</span>
+              {stats.pending > 0 && (
+                <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded-full">
+                  {stats.pending}
+                </span>
+              )}
+            </div>
+          </button>
+        )}
 
         <button
           onClick={() => {
@@ -998,7 +1075,7 @@ export function DepositWithdrawalManagement() {
                           )}
                           {(activeTab === "deposits" || activeTab === "withdrawals") && item.tx_hash && (
                             <button
-                              onClick={() => handleViewReceipt(item.tx_hash)}
+                              onClick={() => handleViewReceipt(item.tx_hash, 8453, item.deposit_id)}
                               className="p-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 hover:bg-purple-500/30 transition-all"
                               title="Receipt 확인"
                             >
