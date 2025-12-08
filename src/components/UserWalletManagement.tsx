@@ -155,6 +155,7 @@ export function UserWalletManagement() {
   };
 
   const fetchData = async () => {
+    setIsLoading(true);
     try {
       // Backend API로 사용자 데이터 가져오기 (RLS 우회)
       const backendUrl = 'https://mzoeeqmtvlnyonicycvg.supabase.co/functions/v1/make-server-b6d5667f';
@@ -204,6 +205,8 @@ export function UserWalletManagement() {
     } catch (error) {
       console.error('❌ Error fetching users:', error);
       toast.error('사용자 데이터를 가져오는데 실패했습니다');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -873,7 +876,12 @@ export function UserWalletManagement() {
 
               {/* 사용자 리스트 - 스크롤 없이 페이지네이션 */}
               <div className="space-y-1.5 min-h-[480px]">
-                {currentUsers.length === 0 ? (
+                {isLoading ? (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <Loader2 className="w-12 h-12 text-cyan-400 animate-spin mb-4" />
+                    <p className="text-slate-400">사용자 목록을 불러오는 중...</p>
+                  </div>
+                ) : currentUsers.length === 0 ? (
                   <div className="text-center py-12 text-slate-400">
                     검색 결과가 없습니다
                   </div>
