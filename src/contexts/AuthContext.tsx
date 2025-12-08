@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '../utils/supabase/client';
 import { SUPABASE_CONFIG } from '../utils/config';
+import bcrypt from 'bcryptjs';
 
 interface User {
   id: string;
@@ -327,9 +328,83 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // 2단계: Auth 실패 시 Backend API로 로그인 처리 (관리자용)
-      console.log('🔐 Trying backend API login for admin accounts...');
+      // 2단계: Auth 실패 시 DB 비밀번호 검증 (관리자용)
+      // Figma 환경에서는 직접 Supabase 클라이언트 사용
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+      const isFigmaEnv = hostname.includes('.figma.com') || hostname.includes('figma.site');
       
+      if (isFigmaEnv) {
+        console.log('🎨 Figma 환경 감지 - DB 비밀번호 검증 시도');
+        
+        // 1. 사용자 조회 (password_hash만 조회)
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('user_id, email, username, role, level, template_id, center_name, logo_url, password_hash, status')
+          .eq('email', email)
+          .maybeSingle();
+        
+        if (userError || !userData) {
+          console.error('User lookup error:', userError);
+          throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
+        }
+        
+        console.log('User found:', { email: userData.email, role: userData.role, status: userData.status });
+        
+        // 승인대기 상태 체크
+        if (userData.status === 'pending') {
+          throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
+        }
+        
+        // 2. 비밀번호 검증
+        if (!userData.password_hash) {
+          console.error('No password_hash found in database');
+          throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
+        }
+        
+        // bcrypt 해시 비교 또는 평문 비교 (하위 호환성)
+        let isPasswordValid = false;
+        
+        if (userData.password_hash.startsWith('$2a$') || userData.password_hash.startsWith('$2b$')) {
+          // bcrypt 해시인 경우
+          console.log('🔐 Comparing bcrypt hash...');
+          isPasswordValid = await bcrypt.compare(password, userData.password_hash);
+        } else {
+          // 평문 비밀번호인 경우 (기존 사용자)
+          console.log('🔐 Comparing plain text password...');
+          isPasswordValid = userData.password_hash === password;
+        }
+        
+        if (!isPasswordValid) {
+          console.error('Password mismatch');
+          throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
+        }
+        
+        console.log('✅ Password verified successfully');
+        
+        const loggedInUser: User = {
+          id: userData.user_id,
+          email: userData.email,
+          username: userData.username,
+          role: userData.role || 'user',
+          level: userData.level,
+          templateId: userData.template_id,
+          centerName: userData.center_name,
+          logoUrl: userData.logo_url
+        };
+        
+        // 역할 검증
+        if (isAdminPage && !['center', 'agency', 'store', 'admin', 'master'].includes(loggedInUser.role)) {
+          throw new Error('관리자 권한이 필요합니다');
+        }
+        
+        setUser(loggedInUser);
+        localStorage.setItem('user', JSON.stringify(loggedInUser));
+        
+        console.log('✅ Figma 환경 로그인 성공:', loggedInUser);
+        return loggedInUser;
+      }
+      
+      // 프로덕션 환경: Backend API로 로그인 처리
       const response = await fetch(`${SUPABASE_CONFIG.backendUrl}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -366,11 +441,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logoUrl: userData.logo_url
       };
       
-      // 역할 검증
-      if (isAdminPage && !['center', 'agency', 'store', 'admin', 'master'].includes(loggedInUser.role)) {
+      // 역할 검증: 관리자 페이지에서는 관리자만 로그인 가능
+      if (isAdminPage && loggedInUser.role !== 'admin') {
         throw new Error('관리자 권한이 필요합니다');
       }
       
+      console.log('Setting user state:', loggedInUser);
       setUser(loggedInUser);
       localStorage.setItem('user', JSON.stringify(loggedInUser));
       
@@ -407,7 +483,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }, 100); // 100ms 후 실행
       }
       
-      console.log('✅ Backend API 로그인 성공:', loggedInUser);
+      console.log('Login successful, user state updated:', loggedInUser);
       return loggedInUser;
     } catch (error: any) {
       console.error('Login error:', error);
