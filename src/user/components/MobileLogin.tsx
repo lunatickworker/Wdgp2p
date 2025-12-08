@@ -181,6 +181,12 @@ export function MobileLogin() {
       hasError = true;
     }
 
+    // 추천인 코드 검증 (필수)
+    if (!signUpData.referralCode.trim()) {
+      errors.referralCode = '추천인 코드를 입력해주세요';
+      hasError = true;
+    }
+
     if (hasError) {
       setSignUpErrors(errors);
       toast.error('입력 정보를 확인해주세요', {
@@ -663,6 +669,7 @@ export function MobileLogin() {
                         : 'border-slate-700/50 focus:border-cyan-500/40'
                     }`}
                     placeholder="추천인코드 입력"
+                    required
                   />
                 </div>
                 {signUpErrors.referralCode && (
