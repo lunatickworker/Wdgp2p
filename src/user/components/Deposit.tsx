@@ -171,7 +171,23 @@ export function Deposit({ wallets, selectedCoin, onNavigate, onSelectCoin }: Dep
   };
 
   const getNetworkInfo = (coin: CoinType) => {
-    return coinDetails.get(coin)?.network || 'Unknown';
+    const network = coinDetails.get(coin)?.network;
+    // 네트워크 정보가 없거나 'Unknown Network'인 경우 코인별 기본값 반환
+    if (!network || network === 'Unknown Network') {
+      // 코인별 기본 네트워크
+      const defaultNetworks: { [key: string]: string } = {
+        'KRWQ': 'KRWQ Network',
+        'USDC': 'Ethereum (ERC-20)',
+        'USDT': 'Ethereum (ERC-20)',
+        'TRX': 'Tron (TRC20)',
+        'USDT-TRC20': 'Tron (TRC20)',
+        'BTC': 'Bitcoin',
+        'ETH': 'Ethereum',
+        'BNB': 'BNB Smart Chain'
+      };
+      return defaultNetworks[coin] || coin;
+    }
+    return network;
   };
 
   const getMinDeposit = (coin: CoinType) => {
