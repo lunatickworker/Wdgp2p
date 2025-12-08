@@ -451,7 +451,7 @@ export function DepositWithdrawalManagement() {
               const withdrawTxHash = autoWithdrawResult.txHash;
               console.log('✅ 자동 출금 성공:', withdrawTxHash);
 
-              // 4. 사용자 지갑 잔액 차감
+              // 4. 사용자 지갑 ��액 차감
               const { error: balanceUpdateError } = await supabase
                 .from('wallets')
                 .update({ balance: 0 })  // 전액 출금
@@ -947,39 +947,42 @@ export function DepositWithdrawalManagement() {
           />
         </div>
 
-        <select
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value);
-            setCurrentPage(1);
-          }}
-          className="px-4 py-3 bg-slate-900/50 border border-cyan-500/30 rounded-lg text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
-        >
-          <option value="all">전체 상태</option>
-          {activeTab === "transfer_requests" && (
-            <>
-              <option value="pending">대기중</option>
-              <option value="approved">승인됨</option>
-              <option value="rejected">거부됨</option>
-            </>
-          )}
-          {activeTab === "deposits" && (
-            <>
-              <option value="pending">대기중</option>
-              <option value="confirmed">확인됨</option>
-              <option value="failed">실패</option>
-            </>
-          )}
-          {activeTab === "withdrawals" && (
-            <>
-              <option value="pending">대기중</option>
-              <option value="processing">처리중</option>
-              <option value="completed">완료</option>
-              <option value="rejected">거부됨</option>
-              <option value="failed">실패</option>
-            </>
-          )}
-        </select>
+        {/* 가맹점 계정: 상태 필터 숨김 */}
+        {user?.role !== 'store' && (
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-4 py-3 bg-slate-900/50 border border-cyan-500/30 rounded-lg text-slate-200 focus:outline-none focus:border-cyan-500/50 transition-colors"
+          >
+            <option value="all">전체 상태</option>
+            {activeTab === "transfer_requests" && (
+              <>
+                <option value="pending">대기중</option>
+                <option value="approved">승인됨</option>
+                <option value="rejected">거부됨</option>
+              </>
+            )}
+            {activeTab === "deposits" && (
+              <>
+                <option value="pending">대기중</option>
+                <option value="confirmed">확인됨</option>
+                <option value="failed">실패</option>
+              </>
+            )}
+            {activeTab === "withdrawals" && (
+              <>
+                <option value="pending">대기중</option>
+                <option value="processing">처리중</option>
+                <option value="completed">완료</option>
+                <option value="rejected">거부됨</option>
+                <option value="failed">실패</option>
+              </>
+            )}
+          </select>
+        )}
       </div>
 
       {/* 테이블 */}
