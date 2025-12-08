@@ -384,6 +384,11 @@ export function UserWalletManagement() {
       const userId = self.crypto.randomUUID();
       const passwordHash = await bcrypt.hash(createUserForm.password, 10);
 
+      // 고유한 referral_code 생성 (이메일 @ 앞 + 랜덤 4자리)
+      const baseReferralCode = createUserForm.email.split('@')[0].toLowerCase();
+      const randomSuffix = Math.random().toString(36).substring(2, 6); // 4자리 랜덤 문자
+      const uniqueReferralCode = `${baseReferralCode}_${randomSuffix}`;
+
       // users 테이블에 사용자 정보 저장
       const { error: insertError } = await supabase
         .from('users')
@@ -393,7 +398,7 @@ export function UserWalletManagement() {
           username: createUserForm.username,
           password_hash: passwordHash,
           phone: createUserForm.phoneNumber || null,
-          referral_code: createUserForm.email.split('@')[0].toLowerCase(), // 이메일 @ 앞부분을 추천인 코드로
+          referral_code: uniqueReferralCode, // 고유한 추천인 코드
           role: 'user',
           level: 'Basic',
           parent_user_id: createUserForm.storeId,
