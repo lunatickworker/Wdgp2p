@@ -5,7 +5,6 @@ import { createCenter } from "../../utils/api/create-center";
 import { supabase } from "../../utils/supabase/client";
 import { checkEmailAvailability } from "../../utils/api/check-email";
 import { toast } from "sonner@2.0.3";
-import bcrypt from 'bcryptjs';
 
 interface Agency {
   user_id: string;
