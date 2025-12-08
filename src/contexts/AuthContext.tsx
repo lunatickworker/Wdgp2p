@@ -29,13 +29,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Supabase Auth 세션 확인 (Google OAuth 등)
     checkAuthSession();
 
-    // 2. Auth 상태 변경 리스너 등록
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔐 Auth state changed:', event, session?.user?.email);
-      
       if (event === 'SIGNED_IN' && session?.user) {
         await handleOAuthLogin(session.user);
       } else if (event === 'SIGNED_OUT') {
@@ -51,40 +47,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuthSession = async () => {
     try {
-      // Supabase 세션 확인 (비동기로 시작, 로딩은 빠르게)
       const sessionPromise = supabase.auth.getSession();
       
-      // 로컬 스토리지 먼저 체크 (동기 작업 - 즉시 완료)
       const savedUser = localStorage.getItem('user');
       if (savedUser) {
         try {
           setUser(JSON.parse(savedUser));
-          setIsLoading(false); // 로딩 즉시 해제
+          setIsLoading(false);
         } catch (error) {
-          console.error('Error parsing saved user:', error);
           localStorage.removeItem('user');
         }
       } else {
-        setIsLoading(false); // 저장된 유저가 없으면 즉시 로딩 해제
+        setIsLoading(false);
       }
 
-      // 백그라운드에서 세션 확인
       const { data: { session } } = await sessionPromise;
       
       if (session?.user) {
-        console.log('✅ Active session found:', session.user.email);
         await handleOAuthLogin(session.user);
       }
     } catch (error) {
-      console.error('Session check error:', error);
       setIsLoading(false);
     }
   };
 
   const handleOAuthLogin = async (authUser: any) => {
     try {
-      console.log('🔍 Checking if user exists in database:', authUser.email);
-
       // 1. user_id로 먼저 확인 (Auth ID와 DB ID가 동일해야 함)
       let { data: existingUser, error: fetchError } = await supabase
         .from('users')
@@ -105,15 +93,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (fetchError && fetchError.code !== 'PGRST116') {
-        console.error('Error fetching user:', fetchError);
         throw new Error('사용자 정보 조회 실패');
       }
 
       // 3. 기존 사용자가 있으면 바로 로그인 처리
       if (existingUser) {
-        console.log('✅ Existing user found:', existingUser.email);
-
-        // 상태 확인
         if (existingUser.status !== 'active') {
           throw new Error('비활성화된 계정입니다. 관리자에게 문의하세요.');
         }
@@ -131,28 +115,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(loggedInUser);
         localStorage.setItem('user', JSON.stringify(loggedInUser));
-        console.log('✅ User logged in:', loggedInUser);
         return;
       }
 
       // 4. 신규 사용자 - users 테이블에 생성
-      console.log('📝 Creating new user in database');
-      
-      // 🔥 관리자 role인 경우 자동 삽입하지 않음 (센터 생성 API에서 처리)
       const metadataRole = authUser.user_metadata?.role;
       if (metadataRole && ['center', 'agency', 'store', 'admin', 'master'].includes(metadataRole)) {
-        console.log('⏭️ Admin role detected in metadata - skipping auto insert, waiting for API...');
-        
-        // 잠시 후 DB에서 조회 (센터 생성 API가 삽입할 때까지 대기)
+        // 관리자 role인 경우 자동 삽입하지 않음 (센터 생성 API에서 처리)
         setTimeout(async () => {
           try {
-            const { data: adminUser, error: adminError } = await supabase
+            const { data: adminUser } = await supabase
               .from('users')
               .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
               .eq('user_id', authUser.id)
               .maybeSingle();
             
-            if (adminUser && !adminError) {
+            if (adminUser) {
               const loggedInUser: User = {
                 id: adminUser.user_id,
                 email: adminUser.email,
@@ -166,12 +144,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               
               setUser(loggedInUser);
               localStorage.setItem('user', JSON.stringify(loggedInUser));
-              console.log('✅ Admin user loaded from DB:', loggedInUser);
             }
           } catch (error) {
-            console.error('Error loading admin user:', error);
+            // Silent fail
           }
-        }, 1000); // 1초 후 조회
+        }, 1000);
         
         return;
       }
@@ -193,41 +170,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .insert(newUser);
 
         if (insertError) {
-          // 중복 키 에러인 경우 기존 사용자 조회
           if (insertError.code === '23505') {
-            console.log('🔄 Duplicate key detected, fetching existing user...');
-            
-            const { data: retryUser, error: retryError } = await supabase
+            const { data: retryUser } = await supabase
               .from('users')
               .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
               .eq('user_id', authUser.id)
               .single();
 
-            if (retryError || !retryUser) {
-              throw new Error('사용자 조회 실패');
+            if (retryUser) {
+              const loggedInUser: User = {
+                id: retryUser.user_id,
+                email: retryUser.email,
+                username: retryUser.username,
+                role: retryUser.role || 'user',
+                level: retryUser.level,
+                templateId: retryUser.template_id,
+                centerName: retryUser.center_name,
+                logoUrl: retryUser.logo_url,
+              };
+
+              setUser(loggedInUser);
+              localStorage.setItem('user', JSON.stringify(loggedInUser));
+              return;
             }
-
-            const loggedInUser: User = {
-              id: retryUser.user_id,
-              email: retryUser.email,
-              username: retryUser.username,
-              role: retryUser.role || 'user',
-              level: retryUser.level,
-              templateId: retryUser.template_id,
-              centerName: retryUser.center_name,
-              logoUrl: retryUser.logo_url,
-            };
-
-            setUser(loggedInUser);
-            localStorage.setItem('user', JSON.stringify(loggedInUser));
-            console.log('✅ Existing user loaded after duplicate key:', loggedInUser);
-            return;
           }
           
           throw insertError;
         }
 
-        // 새로 생성된 사용자 정보로 로그인
         const loggedInUser: User = {
           id: authUser.id,
           email: authUser.email,
@@ -237,71 +207,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(loggedInUser);
         localStorage.setItem('user', JSON.stringify(loggedInUser));
-        console.log('✅ New user created and logged in:', loggedInUser);
         return;
 
       } catch (insertError: any) {
-        console.error('Insert error:', insertError);
-        
-        // 중복 키 에러 최종 처리
         if (insertError.code === '23505') {
-          console.log('🔄 Final retry: fetching existing user...');
-          
-          const { data: finalUser, error: finalError } = await supabase
+          const { data: finalUser } = await supabase
             .from('users')
             .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
             .eq('user_id', authUser.id)
             .single();
 
-          if (finalError || !finalUser) {
-            throw new Error('사용자 조회 실패');
+          if (finalUser) {
+            const loggedInUser: User = {
+              id: finalUser.user_id,
+              email: finalUser.email,
+              username: finalUser.username,
+              role: finalUser.role || 'user',
+              level: finalUser.level,
+              templateId: finalUser.template_id,
+              centerName: finalUser.center_name,
+              logoUrl: finalUser.logo_url,
+            };
+
+            setUser(loggedInUser);
+            localStorage.setItem('user', JSON.stringify(loggedInUser));
+            return;
           }
-
-          const loggedInUser: User = {
-            id: finalUser.user_id,
-            email: finalUser.email,
-            username: finalUser.username,
-            role: finalUser.role || 'user',
-            level: finalUser.level,
-            templateId: finalUser.template_id,
-            centerName: finalUser.center_name,
-            logoUrl: finalUser.logo_url,
-          };
-
-          setUser(loggedInUser);
-          localStorage.setItem('user', JSON.stringify(loggedInUser));
-          console.log('✅ Final user loaded:', loggedInUser);
-          return;
         }
         
         throw new Error('사용자 생성 실패');
       }
 
     } catch (error) {
-      console.error('OAuth login error:', error);
       throw error;
     }
   };
 
   const login = async (email: string, password: string, isAdminPage: boolean = false): Promise<User> => {
     try {
-      console.log('🔐 Login attempt:', { email, isAdminPage });
-      
-      // 환경 감지
       const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
       const isFigmaEnv = hostname.includes('.figma.com') || hostname.includes('figma.site') || hostname.includes('fig.ma');
       
-      console.log('🌐 Environment:', { hostname, isFigmaEnv });
-      
-      // Figma 환경에서는 바로 DB 비밀번호 검증
       if (isFigmaEnv) {
-        console.log('🎨 Figma 환경 감지 - DB 비밀번호 검증 시도');
         return await performDBPasswordLogin(email, password, isAdminPage);
       }
 
-      // 프로덕션 환경: Auth 로그인 시도 (일반 회원용)
-      console.log('🌐 프로덕션 환경 - Auth 로그인 시도');
-      
       try {
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
           email,
@@ -309,18 +259,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         if (authData.user && !authError) {
-          // Auth 로그인 성공 - users 테이블에서 추가 정보 조회
-          console.log('✅ Auth 로그인 성공 - 사용자 정보 조회 중...');
-          const { data: userData, error: userError } = await supabase
+          const { data: userData } = await supabase
             .from('users')
             .select('user_id, email, username, role, level, template_id, center_name, logo_url, status')
             .eq('user_id', authData.user.id)
             .maybeSingle();
 
           if (userData) {
-            // 승인대기 상태 체크
             if (userData.status === 'pending') {
-              await supabase.auth.signOut(); // 로그아웃
+              await supabase.auth.signOut();
               throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
             }
 
@@ -335,7 +282,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               logoUrl: userData.logo_url
             };
 
-            // 역할 검증
             if (isAdminPage && !['center', 'agency', 'store', 'admin', 'master'].includes(loggedInUser.role)) {
               await supabase.auth.signOut();
               throw new Error('관리자 권한이 필요합니다');
@@ -343,88 +289,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             setUser(loggedInUser);
             localStorage.setItem('user', JSON.stringify(loggedInUser));
-
-            console.log('✅ Auth 로그인 성공:', loggedInUser);
             return loggedInUser;
           }
         }
-        
-        // Auth 로그인 실패 - 에러 로그
-        console.log('⚠️ Auth 로그인 실패:', authError);
       } catch (authException) {
-        console.log('⚠️ Auth 로그인 예외 발생:', authException);
+        // Auth 실패 - fallback으로 계속 진행
       }
       
-      // Auth 로그인 실패 → DB 비밀번호 검증으로 fallback (관리자 계정용)
-      console.log('⚠️ Auth 로그인 실패 - DB 비밀번호 검증으로 fallback');
       return await performDBPasswordLogin(email, password, isAdminPage);
       
     } catch (error: any) {
-      console.error('❌ Login error:', error);
       throw error;
     }
   };
 
-  // DB 비밀번호 검증 함수 (재사용 가능)
   const performDBPasswordLogin = async (email: string, password: string, isAdminPage: boolean): Promise<User> => {
-    console.log('🔍 DB 비밀번호 검증 시작:', email);
-    
-    // 1. 사용자 조회 (password_hash 포함)
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('user_id, email, username, role, level, template_id, center_name, logo_url, password_hash, status')
       .eq('email', email)
       .maybeSingle();
     
-    if (userError) {
-      console.error('❌ DB 조회 에러:', userError);
+    if (userError || !userData) {
       throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
     }
     
-    if (!userData) {
-      console.error('❌ 사용자를 찾을 수 없음');
-      throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
-    }
-    
-    console.log('📝 User found in DB:', { email: userData.email, role: userData.role, status: userData.status, hasPasswordHash: !!userData.password_hash });
-    
-    // 승인대기 상태 체크
     if (userData.status === 'pending') {
       throw new Error('회원가입 승인 대기 중입니다. 관리자의 승인을 기다려주세요');
     }
     
-    // 2. 비밀번호 검증
     if (!userData.password_hash) {
-      console.error('❌ No password_hash found in database');
       throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
     }
     
-    // bcrypt 해시 비교 또는 평문 비교 (하위 호환성)
     let isPasswordValid = false;
     
     try {
       if (userData.password_hash.startsWith('$2a$') || userData.password_hash.startsWith('$2b$')) {
-        // bcrypt 해시인 경우
-        console.log('🔐 Comparing bcrypt hash...');
         isPasswordValid = await bcrypt.compare(password, userData.password_hash);
       } else {
-        // 평문 비밀번호인 경우 (기존 사용자)
-        console.log('🔐 Comparing plain text password...');
         isPasswordValid = userData.password_hash === password;
       }
     } catch (bcryptError) {
-      console.error('❌ Password comparison error:', bcryptError);
       throw new Error('비밀번호 검증 중 오류가 발생했습니다');
     }
     
-    console.log('🔐 Password validation result:', isPasswordValid);
-    
     if (!isPasswordValid) {
-      console.error('❌ Password mismatch');
       throw new Error('이메일 또는 비밀번호가 올바르지 않습니다');
     }
-    
-    console.log('✅ DB 비밀번호 검증 성공');
     
     const loggedInUser: User = {
       id: userData.user_id,
@@ -437,16 +349,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logoUrl: userData.logo_url
     };
     
-    // 역할 검증
     if (isAdminPage && !['center', 'agency', 'store', 'admin', 'master'].includes(loggedInUser.role)) {
-      console.error('❌ 관리자 권한 없음:', loggedInUser.role);
       throw new Error('관리자 권한이 필요합니다');
     }
     
     setUser(loggedInUser);
     localStorage.setItem('user', JSON.stringify(loggedInUser));
-    
-    console.log('✅ DB 비밀번호 검증 로그인 완료:', loggedInUser);
     return loggedInUser;
   };
 
@@ -460,7 +368,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return;
 
     try {
-      // DB에서 최신 사용자 정보 가져오기
       const { data, error } = await supabase
         .from('users')
         .select('user_id, email, username, role, level, template_id, center_name, logo_url')
@@ -483,10 +390,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(updatedUser);
         localStorage.setItem('user', JSON.stringify(updatedUser));
-        console.log('User info refreshed:', updatedUser);
       }
     } catch (error) {
-      console.error('Error refreshing user:', error);
+      // Silent fail
     }
   };
 
